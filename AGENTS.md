@@ -28,33 +28,16 @@ Run `bun run ojs <command> --json` and read the JSON. If `node_modules/` is miss
 
 `<role>` can be a file name (`2019-06-acme-logistics`) or part of the employer or field (`acme`). Sources: `cv`, `linkedin`, `dig` (things the person tells you), `you` (the person wrote it), `inferred` (your guesses; only allowed under "To confirm").
 
-## Getting started
+## Workflows
 
-When someone says "set me up", "import my CV", or opens the repo for the first time:
+The step-by-step workflows are skills in [`.agents/skills/`](.agents/skills/) (Claude Code sees the same files through `.claude/skills/`). If your agent doesn't load skills by itself, read the `SKILL.md` and follow it.
 
-1. Run `bun run ojs profile --json`.
-2. If there are no documents, ask them to put their CV (and any older CVs, which often mention things the new one dropped) in `documents/`, or to paste it to you.
-3. For each `new` or `changed` document:
-   1. Get the text: `bun run ojs profile text documents/<file> --json`.
-   2. Get the shape: `bun run ojs profile schema --json`. Extract following **Facts, not polish** below. Every job goes in, including ones outside their main field.
-   3. Save your extraction as `data/cache/extracted-<file>.json` and preview: `bun run ojs profile import documents/<file> --extracted data/cache/extracted-<file>.json --dry-run --json`.
-   4. Tell them in plain words what will be created and added, and what couldn't be read. On a yes, run the same command with `--yes`.
-4. Show the overview and offer to dig into their roles. Suggest starting with the one that matters most for what they're looking for.
+| Skill | When |
+|---|---|
+| [import-cv](.agents/skills/import-cv/SKILL.md) | "Set me up", "import my CV", first time in the repo, or `profile --json` shows `new` or `changed` documents. Settles anything uncertain by asking before it writes |
+| [dig](.agents/skills/dig/SKILL.md) | After an import, or "dig", "interview me", "grill me", "go deeper on <role>". One question at a time until each role has real depth |
 
-Pasted CV: save it as a `.txt` in `documents/` first, then import that file.
-
-## Digging into a role
-
-A CV holds a fraction of what someone did. Digging builds the rest, one question at a time.
-
-1. Pick the role they choose, or suggest one from `profile gaps --json`. Read it with `profile show <role> --json`.
-2. Ask **one** question. Make it specific to what's already there ("You rebuilt route planning. How long did it take before, and after?"), not a generic form. Good areas, for any kind of job: scope and scale, outcomes and numbers, problems solved, tools, people and customers, money, hard moments and what happened next, recognition, "what would your manager say you were best at?".
-3. Turn the answer into bullets in their own words, under the right heading (`Context`, `What I owned`, `Projects` with `--sub <project>`, `Achievements`, `Hard moments`, `People and leadership`, `Skills in depth`, `Stories`).
-4. Show the exact lines you'll add. On a yes, write them with `add-bullets --source dig`.
-5. Follow up while it's flowing; move on when they've said what they know. Questions you didn't get to go under `Still to ask` (`--source dig`).
-6. Stop whenever they want, and say what was added.
-
-If they have no past lives yet, ask at a natural moment what they did before this career, or alongside it: bar work, retail, trades, caring, anything. Create one with `profile add past-life` and dig into it the same way, especially for transferable skills (each with what happened that shows it) and stories.
+In both: ask **one question per message**, in plain text, and show the exact lines before writing them.
 
 ## Their details and preferences
 

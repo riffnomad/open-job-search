@@ -4,7 +4,7 @@ Thanks for helping. This file is for people (and agents) working on the code. [A
 
 ## How it fits together
 
-People use open-job-search by opening their agent CLI in this repo. The agent follows [AGENTS.md](AGENTS.md) and the workflows it points to, does the thinking, and calls the `ojs` tools for everything that must be exact: reading and writing the profile, extracting CV text, finding gaps. The web app and the background worker use the same tools, and call an agent CLI headless when they need AI.
+People use open-job-search by opening their agent CLI in this repo. The agent follows [AGENTS.md](AGENTS.md) and the workflow skills in `.agents/skills/`, does the thinking, and calls the `ojs` tools for everything that must be exact: reading and writing the profile, extracting CV text, finding gaps. The web app and the background worker use the same tools, and call an agent CLI headless when they need AI.
 
 ```
 packages/
@@ -12,6 +12,7 @@ packages/
   cli/      `ojs`: the tools agents (and people) call. Parses args, calls core, prints text or --json.
   web/      Local web app (Bun.serve, 127.0.0.1 only). Thin layer over core.
   worker/   Scheduled jobs and notifications. Thin layer over core.
+.agents/skills/  Workflows the agent follows (import-cv, dig). .claude/skills links here.
 documents/  The user's own files. Ignored by git except its README.
 data/       What the tool builds for the user. Ignored by git except its README.
 ```
@@ -37,6 +38,10 @@ bun run typecheck    # tsc, strict
 bun run ojs <cmd>    # the tools
 bun run web          # local web app
 ```
+
+## Writing a workflow skill
+
+One folder per skill in `.agents/skills/<name>/SKILL.md`, with `name` and `description` front matter (the description is what makes agents pick it up). Keep skills agent-neutral: plain steps that call `bun run ojs … --json`. No logic that belongs in core, and no tool names specific to one agent. Add a row for it in the Workflows table in AGENTS.md.
 
 ## Adding an agent CLI preset
 

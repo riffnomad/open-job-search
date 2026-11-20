@@ -33,6 +33,8 @@ claude        # or codex, agy, opencode
 > Set me up and import my CV
 ```
 
+It reads your CV, asks you about anything it isn't sure of before saving, then offers to interview you role by role to get down what your CV left out. The workflows are plain-text skills in [`.agents/skills/`](.agents/skills/).
+
 ## Your files
 
 Two folders hold everything personal. Both are ignored by git, so nothing you add ever ends up in the public repo:
