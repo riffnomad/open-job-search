@@ -104,8 +104,21 @@ export interface ProfileFile<F> {
   sections: Section[];
 }
 
-export type RoleFile = ProfileFile<RoleFrontMatter>;
-export type PastLifeFile = ProfileFile<PastLifeFrontMatter>;
+export type RoleFile = ProfileFile<RoleFrontMatter> & { kind: "role" };
+export type PastLifeFile = ProfileFile<PastLifeFrontMatter> & { kind: "past-life" };
+
+/** YAML reads an empty field (`salary:`) as null. Treat it as missing. */
+export function dropNulls(value: unknown): unknown {
+  if (Array.isArray(value)) return value.filter((v) => v !== null).map(dropNulls);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, v]) => v !== null)
+        .map(([k, v]) => [k, dropNulls(v)]),
+    );
+  }
+  return value;
+}
 
 export interface Bullet {
   text: string;
@@ -147,11 +160,11 @@ export function parseProfileFile(kind: FileKind, text: string, file = "(profile 
   try {
     data = parseYaml(frontMatterRaw) ?? {};
   } catch (err) {
-    const msg = err instanceof YAMLParseError ? err.message.split("\n")[0] : String(err);
+    const msg = err instanceof YAMLParseError ? err.message.split("\n")[0]!.replace(/:\s*$/, "") : String(err);
     throw new ProfileFileError(file, `front matter is not valid YAML: ${msg}`);
   }
   const schema = kind === "role" ? RoleFrontMatter : PastLifeFrontMatter;
-  const result = schema.safeParse(data);
+  const result = schema.safeParse(dropNulls(data));
   if (!result.success) {
     throw new ProfileFileError(file, `front matter is invalid:\n${z.prettifyError(result.error)}`);
   }
@@ -201,7 +214,7 @@ export function renderProfileFile(doc: ProfileFile<unknown>): string {
 }
 
 /** Replace the front matter, re-serialising it. The body is untouched. */
-export function withFrontMatter<F>(doc: ProfileFile<F>, frontMatter: F): ProfileFile<F> {
+export function withFrontMatter<D extends ProfileFile<unknown>>(doc: D, frontMatter: D["frontMatter"]): D {
   return { ...doc, frontMatter, frontMatterRaw: stringifyYaml(frontMatter) };
 }
 
@@ -288,12 +301,12 @@ function bulletLine(b: { text: string; source: Source }): string {
  * Creates the section, in canonical order, if it doesn't exist. Every other
  * byte of the file is preserved.
  */
-export function appendBullets<F>(
-  doc: ProfileFile<F>,
+export function appendBullets<D extends ProfileFile<unknown>>(
+  doc: D,
   heading: string,
   bullets: { text: string; source: Source }[],
   opts: { subheading?: string } = {},
-): ProfileFile<F> {
+): D {
   if (bullets.length === 0) return doc;
   const newLines = bullets.map(bulletLine);
   const sections = doc.sections.slice();

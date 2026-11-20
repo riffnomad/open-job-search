@@ -6,6 +6,9 @@ import {
   configPath,
   detectProviders,
   loadConfig,
+  ProfileError,
+  ProfileFileError,
+  ProfileLoadError,
   ProviderConfig,
   ProviderError,
   resolveProvider,
@@ -13,6 +16,7 @@ import {
   which,
 } from "@ojs/core";
 import pkg from "../package.json" with { type: "json" };
+import { PROFILE_HELP, profileCommand } from "./profile.ts";
 
 const HELP = `ojs: open-job-search
 
@@ -24,9 +28,11 @@ Commands:
   providers add <id>       Add or replace a provider (see options below)
   providers default <id>   Set the default provider
   ask <prompt>             Send a prompt to a provider (handy for testing a setup)
+  profile                  Your profile: roles, past lives, preferences (see below)
   doctor                   Check your setup
   help                     Show this help
 
+${PROFILE_HELP}
 Global options:
   --json                   Machine-readable output (for scripts and AI agents)
   --provider <id>          Use this provider instead of the default
@@ -56,6 +62,19 @@ const { values, positionals } = parseArgs({
     "api-key-env": { type: "string" },
     preset: { type: "string" },
     command: { type: "string" },
+    employer: { type: "string" },
+    title: { type: "string" },
+    start: { type: "string" },
+    end: { type: "string" },
+    location: { type: "string" },
+    industry: { type: "string" },
+    field: { type: "string" },
+    "front-matter": { type: "string" },
+    section: { type: "string" },
+    sub: { type: "string" },
+    source: { type: "string" },
+    text: { type: "string", multiple: true },
+    "dry-run": { type: "boolean", default: false },
   },
 });
 
@@ -187,6 +206,8 @@ async function main(): Promise<void> {
       return providers(rest[0], rest[1]);
     case "ask":
       return ask(rest.join(" ") || undefined);
+    case "profile":
+      return profileCommand(rest, values, out);
     case "doctor":
       return doctor();
     default:
@@ -195,7 +216,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  const known = err instanceof ConfigError || err instanceof ProviderError;
+  const known = [ConfigError, ProviderError, ProfileError, ProfileFileError, ProfileLoadError].some((E) => err instanceof E);
   const message = known ? (err as Error).message : String((err as Error)?.stack ?? err);
   if (values.json) console.log(JSON.stringify({ error: message }));
   else console.error(`ojs: ${message}`);

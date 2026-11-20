@@ -5,3 +5,5 @@ export * from "./paths.ts";
 export * from "./profile/role-file.ts";
 export * from "./profile/schema.ts";
 export * from "./profile/load.ts";
+export * from "./profile/store.ts";
+export * from "./profile/gaps.ts";

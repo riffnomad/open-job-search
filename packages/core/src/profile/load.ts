@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { parse as parseYaml, YAMLParseError } from "yaml";
 import { z } from "zod";
 import { profileDir } from "../paths.ts";
-import { parseProfileFile, ProfileFileError, type PastLifeFile, type RoleFile } from "./role-file.ts";
+import { dropNulls, parseProfileFile, ProfileFileError, type PastLifeFile, type RoleFile } from "./role-file.ts";
 import { ProfileData } from "./schema.ts";
 
 export const PROFILE_FILE = "profile.yaml";
@@ -37,10 +37,10 @@ export function parseProfileYaml(text: string, file = PROFILE_FILE): ProfileData
   try {
     raw = parseYaml(text) ?? {};
   } catch (err) {
-    const msg = err instanceof YAMLParseError ? err.message.split("\n")[0] : String(err);
+    const msg = err instanceof YAMLParseError ? err.message.split("\n")[0]!.replace(/:\s*$/, "") : String(err);
     throw new ProfileFileError(file, `not valid YAML: ${msg}`);
   }
-  const result = ProfileData.safeParse(raw);
+  const result = ProfileData.safeParse(dropNulls(raw));
   if (!result.success) throw new ProfileFileError(file, `invalid:\n${z.prettifyError(result.error)}`);
   return result.data;
 }
