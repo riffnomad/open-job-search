@@ -9,10 +9,6 @@ import { ProfileData } from "./schema.ts";
 export const PROFILE_FILE = "profile.yaml";
 export const ROLES_DIR = "roles";
 export const PAST_LIVES_DIR = "past-lives";
-export const WRITING_SAMPLES_DIR = "writing-samples";
-/** Drop CVs and other documents here; `ojs profile import` picks them up and moves them to sources/. */
-export const INBOX_DIR = "inbox";
-export const SOURCES_DIR = "sources";
 export const HISTORY_DIR = "history";
 
 export interface Profile {
@@ -22,10 +18,8 @@ export interface Profile {
   data: ProfileData;
   roles: { file: string; doc: RoleFile }[];
   pastLives: { file: string; doc: PastLifeFile }[];
-  /** File names in writing-samples/, for drafting in step 6. */
+  /** File names in documents/writing-samples/, for drafting in step 6. */
   writingSamples: string[];
-  /** Files waiting in inbox/ to be imported. */
-  inbox: string[];
 }
 
 /** Every problem found, across all files, so the user can fix them in one go. */
@@ -49,7 +43,12 @@ export function parseProfileYaml(text: string, file = PROFILE_FILE): ProfileData
   return result.data;
 }
 
-export async function loadProfile(dir = profileDir()): Promise<Profile> {
+/**
+ * Load the profile from data/profile/. Writing samples are documents the
+ * user puts in, so they're read from documents/writing-samples/ (by default
+ * the documents/ folder next to data/).
+ */
+export async function loadProfile(dir = profileDir(), samplesDir = join(dir, "..", "..", "documents", "writing-samples")): Promise<Profile> {
   const problems: string[] = [];
 
   let data = ProfileData.parse({});
@@ -90,9 +89,8 @@ export async function loadProfile(dir = profileDir()): Promise<Profile> {
   roles.sort((a, b) => latestDate(b.doc).localeCompare(latestDate(a.doc)));
   pastLives.sort((a, b) => a.file.localeCompare(b.file));
 
-  const writingSamples = (await listDir(join(dir, WRITING_SAMPLES_DIR))).filter((f) => !f.startsWith(".")).sort();
-  const inbox = (await listDir(join(dir, INBOX_DIR))).filter((f) => !f.startsWith(".")).sort();
-  return { dir, exists, data, roles, pastLives, writingSamples, inbox };
+  const writingSamples = (await listDir(samplesDir)).filter((f) => !f.startsWith(".") && f !== "README.md").sort();
+  return { dir, exists, data, roles, pastLives, writingSamples };
 }
 
 /** Current roles sort first; then by most recent end, then start. */

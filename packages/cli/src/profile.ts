@@ -6,11 +6,17 @@ import {
   addBullets,
   applyImport,
   extractCvCached,
+  ExtractedCv,
+  extractedCvJsonSchema,
   ensureProfileDirs,
   ExtractError,
   extractText,
-  INBOX_DIR,
-  keepSource,
+  addToDocuments,
+  documentsDir,
+  listDocuments,
+  markImported,
+  sha256File,
+  type DocumentStatus,
   loadConfig,
   planImport,
   resolveProvider,
@@ -38,6 +44,7 @@ export interface ProfileFlags {
   json: boolean;
   provider?: string;
   paste?: boolean;
+  extracted?: string;
   yes?: boolean;
   employer?: string;
   title?: string;
@@ -66,8 +73,11 @@ export const PROFILE_HELP = `Profile commands:
                               sources: cv | linkedin | dig | you | inferred (inferred only under "To confirm")
   profile edit [role]         Open in $EDITOR (no role: profile.yaml), then check it
   profile import [file]       Seed role files from a CV (PDF, DOCX, MD, TXT) using your AI provider.
-                              No file: imports everything in your inbox folder (~/.ojs/profile/inbox)
+                              No file: imports new or changed files in documents/
                               --paste (CV text on stdin)  --dry-run (preview only)  -y, --yes (write without asking)
+                              --extracted <file|->  use an extraction you made yourself (agents), no AI call
+  profile text <file>         The plain text of a CV file (PDF, DOCX, MD, TXT), for agents that can't read PDFs
+  profile schema              JSON schema for --extracted
 `;
 
 const today = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
@@ -123,22 +133,23 @@ function depthLine(e: ProfileEntry): string {
   return parts.join(" · ");
 }
 
-function overview(p: Profile): string {
+function overview(p: Profile, docs: DocumentStatus[]): string {
   const b = p.data.basics;
   const who = [b.name, b.headline, b.location].filter(Boolean).join(" · ");
   const lines = [`Profile: ${p.dir}`];
   if (who) lines.push("", who);
   const roles = p.roles.map((r) => ({ kind: "role" as const, ...r }));
   const lives = p.pastLives.map((r) => ({ kind: "past-life" as const, ...r }));
-  const inboxNote = p.inbox.length
-    ? `${p.inbox.length} file${p.inbox.length === 1 ? "" : "s"} waiting in your inbox (${p.inbox.join(", ")}). Run \`ojs profile import\`.`
+  const pending = docs.filter((d) => d.status !== "imported");
+  const pendingNote = pending.length
+    ? `${pending.length} new or changed file${pending.length === 1 ? "" : "s"} in documents/ (${pending.map((d) => d.file).join(", ")}). Run \`ojs profile import\`.`
     : "";
   if (!p.exists && roles.length === 0 && lives.length === 0) {
     return [
       `No profile yet in ${p.dir}.`,
       "",
-      inboxNote ||
-        `Drop your CV (PDF, Word, Markdown or text) into\n  ${join(p.dir, INBOX_DIR)}\nand run \`ojs profile import\`.`,
+      pendingNote ||
+        `Put your CV (PDF, Word, Markdown or text) in\n  ${documentsDir()}\nand run \`ojs profile import\`.`,
       "",
       "Or start by hand:",
       '  ojs profile add role --employer "Acme" --title "Engineer" --start 2021-03',
@@ -152,25 +163,25 @@ function overview(p: Profile): string {
   if (lives.length === 0) lines.push("  none yet. `ojs profile add past-life --field ...`");
   for (const l of lives) lines.push(`  ${label(l).padEnd(24)} ${titles(l)}   ${depthLine(l)}   (${l.file})`);
   lines.push("", `Writing samples: ${p.writingSamples.length}`);
-  lines.push("", inboxNote || "Next: `ojs profile gaps` to see what to dig into.");
+  lines.push("", pendingNote || "Next: `ojs profile gaps` to see what to dig into.");
   return lines.join("\n");
 }
 
 async function show(ref: string | undefined, out: Out): Promise<void> {
-  if (!ref) await ensureProfileDirs(); // so the inbox exists the first time someone looks
   const p = await loadProfile();
   if (ref) {
     const e = resolveEntry(p, ref);
     return out(renderProfileFile(e.doc), entryJson(e, true));
   }
-  out(overview(p), {
+  const docs = await listDocuments();
+  out(overview(p, docs), {
     dir: p.dir,
     exists: p.exists,
     data: p.data,
     roles: p.roles.map((r) => entryJson({ kind: "role", ...r }, false)),
     pastLives: p.pastLives.map((l) => entryJson({ kind: "past-life", ...l }, false)),
     writingSamples: p.writingSamples,
-    inbox: p.inbox,
+    documents: docs.map(({ file, status }) => ({ file, status })),
   });
 }
 
@@ -274,7 +285,8 @@ function planSummary(plan: ImportPlan): string {
 interface ImportSource {
   label: string;
   text: string;
-  ref: { path: string; move?: boolean } | { text: string; name: string };
+  /** A file (inside documents/ or not) or pasted text. */
+  ref: { path: string; sha256: string } | { text: string; name: string };
 }
 
 interface ImportOutcome {
@@ -282,11 +294,33 @@ interface ImportOutcome {
   data: Record<string, unknown>;
 }
 
+/** Make the source part of documents/ and remember it's been imported. */
+async function recordSource(src: ImportSource): Promise<string> {
+  const rel = await addToDocuments(documentsDir(), src.ref);
+  const sha = "sha256" in src.ref ? src.ref.sha256 : await sha256File(join(documentsDir(), rel));
+  await markImported(profileDir(), rel, sha);
+  return rel;
+}
+
 /** Plan one source, show it, confirm, write. Never throws for "nothing new" or "declined". */
-async function importOne(src: ImportSource, f: ProfileFlags, provider: ReturnType<typeof resolveProvider>, say: (m: string) => void): Promise<ImportOutcome> {
-  say(`Sending ${src.text.length.toLocaleString("en-GB")} characters from ${src.label} to ${provider.id} to pull out your roles. This can take a minute.`);
-  const { extracted, cached } = await extractCvCached(provider, src.text);
-  if (cached) say("(Using the result from last time for this exact text and provider.)");
+async function importOne(
+  src: ImportSource,
+  f: ProfileFlags,
+  ai: { provider: ReturnType<typeof resolveProvider> } | { extracted: ExtractedCv },
+  say: (m: string) => void,
+): Promise<ImportOutcome> {
+  let extracted: ExtractedCv;
+  let providerId: string;
+  if ("extracted" in ai) {
+    extracted = ai.extracted;
+    providerId = "agent";
+  } else {
+    say(`Sending ${src.text.length.toLocaleString("en-GB")} characters from ${src.label} to ${ai.provider.id} to pull out your roles. This can take a minute.`);
+    const r = await extractCvCached(ai.provider, src.text);
+    if (r.cached) say("(Using the result from last time for this exact text and provider.)");
+    extracted = r.extracted;
+    providerId = ai.provider.id;
+  }
 
   const dir = profileDir();
   const profile = await loadProfile(dir);
@@ -296,7 +330,7 @@ async function importOne(src: ImportSource, f: ProfileFlags, provider: ReturnTyp
   const summary = planSummary(plan);
   const data = (written: boolean, extra: Record<string, unknown> = {}) => ({
     source: src.label,
-    provider: provider.id,
+    provider: providerId,
     written,
     files: plan.files.map(({ text: _t, ...rest }) => rest),
     profileYaml: plan.profileYaml?.filled ?? [],
@@ -306,9 +340,9 @@ async function importOne(src: ImportSource, f: ProfileFlags, provider: ReturnTyp
 
   if (f["dry-run"]) return { human: `${summary}${nothing ? "" : "\n\nPreview only. Run again without --dry-run to write."}`, data: data(false) };
   if (nothing) {
-    // Already in the profile: an inbox file is done, so file it away.
-    const kept = "move" in src.ref && src.ref.move ? await keepSource(dir, src.ref) : undefined;
-    return { human: summary + (kept ? `\nMoved to ${kept}.` : ""), data: data(false, kept ? { kept } : {}) };
+    // Everything in it is already in the profile: a file counts as imported.
+    if ("path" in src.ref) await recordSource(src);
+    return { human: summary, data: data(false) };
   }
 
   let go = Boolean(f.yes);
@@ -326,68 +360,93 @@ async function importOne(src: ImportSource, f: ProfileFlags, provider: ReturnTyp
   }
 
   await applyImport(dir, plan);
-  const kept = await keepSource(dir, src.ref);
-  const verb = "move" in src.ref && src.ref.move ? "Moved the file to" : "A copy of the source is in";
-  return { human: `${shown ? "" : summary + "\n\n"}Written. ${verb} ${kept}.`, data: data(true, { kept }) };
+  const rel = await recordSource(src);
+  const where = "path" in src.ref && rel !== basename(src.ref.path) ? ` Saved a copy as documents/${rel}.` : "path" in src.ref ? "" : ` Saved the text as documents/${rel}.`;
+  return { human: `${shown ? "" : summary + "\n\n"}Written.${where}`, data: data(true, { document: rel }) };
 }
 
 async function importCmd(file: string | undefined, f: ProfileFlags, out: Out): Promise<void> {
   const say = (msg: string) => {
     if (!f.json) console.error(msg);
   };
-  const readFileSource = async (path: string, move: boolean): Promise<ImportSource> => {
+  const readFileSource = async (path: string, label = basename(path)): Promise<ImportSource> => {
     if ((await stat(path).catch(() => undefined))?.isDirectory()) {
-      throw new ProfileError(`${basename(path)} is a folder. Importing a LinkedIn export folder isn't built yet; import your CV file for now.`);
+      throw new ProfileError(`${label} is a folder. Importing a LinkedIn export folder isn't built yet; import your CV file for now.`);
     }
     const r = await extractText(path);
-    say(`Read ${basename(path)}${r.pages ? ` (${r.pages} page${r.pages === 1 ? "" : "s"})` : ""} with ${r.method}.`);
+    say(`Read ${label}${r.pages ? ` (${r.pages} page${r.pages === 1 ? "" : "s"})` : ""} with ${r.method}.`);
     for (const w of r.warnings) say(`  note: ${w}`);
-    return { label: basename(path), text: r.text, ref: { path, move } };
+    return { label, text: r.text, ref: { path, sha256: await sha256File(path) } };
   };
 
+  const readStdin = async () => tidy(await new Response(process.stdin as unknown as ReadableStream).text());
+  let pre: ExtractedCv | undefined;
+  if (f.extracted) {
+    if (f.paste && f.extracted === "-") throw new ProfileError("--paste and --extracted - both read stdin; pass the extraction as a file instead");
+    if (!file && !f.paste) throw new ProfileError("--extracted needs the source too: ojs profile import <file> --extracted <json|->");
+    const raw = f.extracted === "-" ? await readStdin() : await readFile(f.extracted, "utf8");
+    let json: unknown;
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      throw new ProfileError("--extracted is not valid JSON. See `ojs profile schema` for the shape.");
+    }
+    const parsed = ExtractedCv.safeParse(json);
+    if (!parsed.success) throw new ProfileError(`--extracted doesn't match the schema (see \`ojs profile schema\`):\n${parsed.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n")}`);
+    pre = parsed.data;
+  }
+  const aiFor = async () => (pre ? { extracted: pre } : { provider: resolveProvider(await loadConfig(), f.provider) });
+
   if (f.paste) {
-    const text = tidy(await new Response(process.stdin as unknown as ReadableStream).text());
+    const text = await readStdin();
     if (!text) throw new ProfileError("nothing on stdin. Pipe or paste your CV text, e.g. `pbpaste | ojs profile import --paste`");
-    const provider = resolveProvider(await loadConfig(), f.provider);
-    const r = await importOne({ label: "pasted text", text, ref: { text, name: "pasted" } }, f, provider, say);
+    const r = await importOne({ label: "pasted text", text, ref: { text, name: "pasted-cv" } }, f, await aiFor(), say);
     return out(r.human, r.data);
   }
 
   if (file) {
-    const src = await readFileSource(file, false);
-    const provider = resolveProvider(await loadConfig(), f.provider);
-    const r = await importOne(src, f, provider, say);
+    const src = await readFileSource(file);
+    const r = await importOne(src, f, await aiFor(), say);
     return out(r.human + (r.data.written ? "\nNext: `ojs profile gaps` to see what to dig into." : ""), r.data);
   }
 
-  // No file: import everything waiting in the inbox.
-  const dir = profileDir();
-  await ensureProfileDirs(dir);
-  const inboxDir = join(dir, INBOX_DIR);
-  const waiting = (await loadProfile(dir)).inbox;
-  if (waiting.length === 0) {
-    return out(`Your inbox is empty. Drop your CV (PDF, Word, Markdown or text) into:\n  ${inboxDir}\nthen run \`ojs profile import\` again. Or import a file directly: \`ojs profile import <file>\`.`, {
-      inbox: inboxDir,
+  // No file: import new or changed files in documents/.
+  const docsDir = documentsDir();
+  const pending = (await listDocuments(docsDir)).filter((d) => d.status !== "imported");
+  if (pending.length === 0) {
+    return out(`Nothing new in documents/. Put your CV (PDF, Word, Markdown or text) in:\n  ${docsDir}\nthen run \`ojs profile import\` again. Or import a file directly: \`ojs profile import <file>\`.`, {
+      documents: docsDir,
       results: [],
     });
   }
   const provider = resolveProvider(await loadConfig(), f.provider);
   const human: string[] = [];
   const results: Record<string, unknown>[] = [];
-  for (const name of waiting) {
-    say(`\n── ${name} ──`);
+  for (const doc of pending) {
+    say(`\n── ${doc.file}${doc.status === "changed" ? " (changed)" : ""} ──`);
     try {
-      const r = await importOne(await readFileSource(join(inboxDir, name), true), f, provider, say);
-      human.push(`── ${name} ──\n${r.human}`);
+      const r = await importOne(await readFileSource(join(docsDir, doc.file), doc.file), f, { provider }, say);
+      human.push(`── ${doc.file} ──\n${r.human}`);
       results.push(r.data);
     } catch (err) {
       if (!(err instanceof ProfileError || err instanceof ExtractError)) throw err;
-      human.push(`── ${name} ──\nSkipped, left in the inbox: ${err.message}`);
-      results.push({ source: name, written: false, error: err.message });
+      human.push(`── ${doc.file} ──\nSkipped: ${err.message}`);
+      results.push({ source: doc.file, written: false, error: err.message });
     }
   }
   const wrote = results.some((r) => r.written);
-  out(human.join("\n\n") + (wrote ? "\n\nNext: `ojs profile gaps` to see what to dig into." : ""), { inbox: inboxDir, results });
+  out(human.join("\n\n") + (wrote ? "\n\nNext: `ojs profile gaps` to see what to dig into." : ""), { documents: docsDir, results });
+}
+
+async function textCmd(file: string | undefined, out: Out): Promise<void> {
+  if (!file) throw new ProfileError("usage: ojs profile text <file>");
+  const r = await extractText(file);
+  out(r.text, { file, method: r.method, ...(r.pages ? { pages: r.pages } : {}), warnings: r.warnings, text: r.text });
+}
+
+function schemaCmd(out: Out): void {
+  const schema = extractedCvJsonSchema();
+  out(JSON.stringify(schema, null, 2), schema);
 }
 
 export async function profileCommand(rest: string[], f: ProfileFlags, out: Out): Promise<void> {
@@ -406,6 +465,10 @@ export async function profileCommand(rest: string[], f: ProfileFlags, out: Out):
       return edit(args[0], f, out);
     case "import":
       return importCmd(args[0], f, out);
+    case "text":
+      return textCmd(args[0], out);
+    case "schema":
+      return schemaCmd(out);
     default:
       // `ojs profile acme` reads naturally as "show acme".
       return show(sub, out);

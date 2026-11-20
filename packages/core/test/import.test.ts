@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LLMProvider } from "../src/llm/types.ts";
 import { normalizeDate } from "../src/profile/dates.ts";
-import { applyImport, extractCv, extractCvCached, keepSource, planImport, type ExtractedCv } from "../src/profile/import.ts";
+import { addToDocuments, applyImport, extractCv, extractCvCached, listDocuments, markImported, planImport, type ExtractedCv } from "../src/profile/import.ts";
 import { loadProfile } from "../src/profile/load.ts";
 import { findSection, parseProfileFile, sectionBullets } from "../src/profile/role-file.ts";
 
@@ -160,22 +160,51 @@ describe("extractCv", () => {
     const home = await temp();
     let calls = 0;
     const fake: LLMProvider = { id: "fake", kind: "api", async generateText() { calls++; return JSON.stringify(extracted); } };
-    expect((await extractCvCached(fake, "cv text", { OJS_HOME: home })).cached).toBe(false);
-    expect((await extractCvCached(fake, "cv text", { OJS_HOME: home })).cached).toBe(true);
-    expect((await extractCvCached(fake, "other text", { OJS_HOME: home })).cached).toBe(false);
+    expect((await extractCvCached(fake, "cv text", { OJS_ROOT: home })).cached).toBe(false);
+    expect((await extractCvCached(fake, "cv text", { OJS_ROOT: home })).cached).toBe(true);
+    expect((await extractCvCached(fake, "other text", { OJS_ROOT: home })).cached).toBe(false);
     expect(calls).toBe(2);
   });
 });
 
-describe("keepSource", () => {
-  test("copies files and pasted text into sources/, private", async () => {
-    const dir = await temp();
-    const src = join(dir, "My CV (2026).pdf");
-    await writeFile(src, "%PDF");
+describe("documents/", () => {
+  test("lists files with their import status; files stay where they are", async () => {
+    const root = await temp();
+    const docs = join(root, "documents");
+    const profile = join(root, "data", "profile");
+    await mkdir(join(docs, "cv"), { recursive: true });
+    await mkdir(join(docs, "writing-samples"), { recursive: true });
+    await writeFile(join(docs, "README.md"), "explains the folder");
+    await writeFile(join(docs, "cv", "cv.md"), "v1");
+    await writeFile(join(docs, "references.txt"), "ref");
+    await writeFile(join(docs, ".DS_Store"), "");
+    await writeFile(join(docs, "writing-samples", "letter.txt"), "not a CV");
+
+    const first = await listDocuments(docs, profile);
+    expect(first.map((d) => [d.file, d.status])).toEqual([
+      ["cv/cv.md", "new"],
+      ["references.txt", "new"],
+    ]);
+    await markImported(profile, "cv/cv.md", first[0]!.sha256);
+    expect((await stat(join(profile, "imports.json"))).mode & 0o777).toBe(0o600);
+    expect((await listDocuments(docs, profile)).map((d) => d.status)).toEqual(["imported", "new"]);
+    await writeFile(join(docs, "cv", "cv.md"), "v2");
+    expect((await listDocuments(docs, profile)).map((d) => d.status)).toEqual(["changed", "new"]);
+  });
+
+  test("addToDocuments copies outside files in, keeps inside files, saves pasted text", async () => {
+    const root = await temp();
+    const docs = join(root, "documents");
+    const outside = join(root, "My CV (2026).pdf");
+    await writeFile(outside, "%PDF");
     const now = new Date("2026-11-20T10:00:00Z");
-    const a = await keepSource(dir, { path: src }, now);
-    expect(a).toBe("sources/2026-11-20-my-cv-2026.pdf");
-    expect((await stat(join(dir, a))).mode & 0o777).toBe(0o600);
-    expect(await keepSource(dir, { text: "pasted", name: "pasted" }, now)).toBe("sources/2026-11-20-pasted.txt");
+    expect(await addToDocuments(docs, { path: outside }, now)).toBe("my-cv-2026.pdf");
+    expect((await stat(join(docs, "my-cv-2026.pdf"))).mode & 0o777).toBe(0o600);
+    expect(await addToDocuments(docs, { path: outside }, now)).toBe("my-cv-2026.pdf"); // same content: no duplicate
+    await writeFile(outside, "%PDF v2");
+    expect(await addToDocuments(docs, { path: outside }, now)).toBe("my-cv-2026-2.pdf"); // different content, same name
+    expect(await addToDocuments(docs, { path: join(docs, "my-cv-2026.pdf") }, now)).toBe("my-cv-2026.pdf");
+    expect(await addToDocuments(docs, { text: "pasted", name: "pasted-cv" }, now)).toBe("pasted-cv-2026-11-20.txt");
+    expect(await addToDocuments(docs, { text: "pasted", name: "pasted-cv" }, now)).toBe("pasted-cv-2026-11-20.txt");
   });
 });

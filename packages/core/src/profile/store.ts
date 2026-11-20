@@ -11,13 +11,10 @@ import { basename, dirname, join } from "node:path";
 import { profileDir } from "../paths.ts";
 import {
   HISTORY_DIR,
-  INBOX_DIR,
   loadProfile,
   PAST_LIVES_DIR,
   PROFILE_FILE,
   ROLES_DIR,
-  SOURCES_DIR,
-  WRITING_SAMPLES_DIR,
   type Profile,
 } from "./load.ts";
 import {
@@ -41,7 +38,7 @@ export class ProfileError extends Error {
   override name = "ProfileError";
 }
 
-const DIRS = [INBOX_DIR, ROLES_DIR, PAST_LIVES_DIR, WRITING_SAMPLES_DIR, SOURCES_DIR, HISTORY_DIR];
+const DIRS = [ROLES_DIR, PAST_LIVES_DIR, HISTORY_DIR];
 
 export async function ensureProfileDirs(dir = profileDir()): Promise<void> {
   await mkdir(dir, { recursive: true, mode: 0o700 });
@@ -188,7 +185,7 @@ export async function addBullets(ref: string, opts: AddBulletsOptions, dir = pro
 
 /** profile.yaml for a new profile, with comments explaining each part. */
 export const PROFILE_YAML_TEMPLATE = `# Your profile: the short, structured part.
-# Your experience lives in roles/ and past-lives/, one file each.
+# Your experience lives in roles/ and past-lives/ next to this file, one file each.
 # Everything here is optional. \`ojs profile review\` shows what's missing.
 version: 1
 

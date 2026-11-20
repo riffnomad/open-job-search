@@ -58,18 +58,22 @@ describe("loadProfile", () => {
   });
 
   test("loads yaml, roles newest first, past lives and writing samples", async () => {
-    const dir = await tempProfile();
+    const root = await tempProfile();
+    const dir = join(root, "data", "profile");
+    const samples = join(root, "documents", "writing-samples");
+    await mkdir(dir, { recursive: true });
+    await mkdir(samples, { recursive: true });
     await copyFile(join(fixtures, "profile.yaml"), join(dir, "profile.yaml"));
     await mkdir(join(dir, "roles"));
     await mkdir(join(dir, "past-lives"));
-    await mkdir(join(dir, "writing-samples"));
     await copyFile(join(fixtures, "role-acme.md"), join(dir, "roles", "2019-06-acme-logistics.md"));
     await writeFile(join(dir, "roles", "2023-09-northwind.md"), role("Northwind", "2023-09"));
     await writeFile(join(dir, "roles", "2014-01-old-co.md"), role("Old Co", "2014-01", "2016-05"));
     await writeFile(join(dir, "roles", "notes.txt"), "ignored");
     await writeFile(join(dir, "past-lives", "hospitality.md"), "---\nfield: Hospitality\n---\n");
-    await writeFile(join(dir, "writing-samples", "cover-letter.txt"), "Dear…");
-    await writeFile(join(dir, "writing-samples", ".DS_Store"), "");
+    await writeFile(join(samples, "cover-letter.txt"), "Dear…");
+    await writeFile(join(samples, ".DS_Store"), "");
+    await writeFile(join(samples, "README.md"), "explains the folder");
 
     const p = await loadProfile(dir);
     expect(p.exists).toBe(true);

@@ -5,6 +5,8 @@ import {
   ConfigError,
   ExtractError,
   configPath,
+  dataDir,
+  documentsDir,
   detectProviders,
   loadConfig,
   ProfileError,
@@ -47,7 +49,8 @@ providers add options:
   --preset <p>             For agent-cli: ${Object.keys(AGENT_CLI_PRESETS).join(", ")}, or custom
   --command <cmd>          For a custom agent-cli
 
-Your data lives in ${configPath().replace(/config\.json$/, "")} (override with OJS_HOME).
+Your documents go in ${documentsDir()}, and what ojs builds goes in ${dataDir()}.
+Both are ignored by git. Override the location with OJS_ROOT.
 `;
 
 const { values, positionals } = parseArgs({
@@ -77,6 +80,7 @@ const { values, positionals } = parseArgs({
     text: { type: "string", multiple: true },
     "dry-run": { type: "boolean", default: false },
     paste: { type: "boolean", default: false },
+    extracted: { type: "string" },
     yes: { type: "boolean", short: "y", default: false },
   },
 });

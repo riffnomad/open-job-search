@@ -1,20 +1,42 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+type Env = Record<string, string | undefined>;
 
 /**
- * Where a user's data lives. Never inside the repo: CVs, contacts and
- * applications are personal, and this project is public.
+ * The workspace: the folder holding `documents/` (what you put in) and
+ * `data/` (what the tool builds). By default it's this repo: clone it,
+ * open your agent in it.
+ * Both folders are ignored by git, apart from their READMEs.
  *
- * Override with OJS_HOME (tests, multiple profiles, portable installs).
+ * Override with OJS_ROOT (tests, or keeping your data somewhere else).
  */
-export function ojsHome(env: Record<string, string | undefined> = process.env): string {
-  return env.OJS_HOME ?? join(homedir(), ".ojs");
+export function workspaceRoot(env: Env = process.env): string {
+  return env.OJS_ROOT ?? fileURLToPath(new URL("../../../", import.meta.url));
 }
 
-export function configPath(env?: Record<string, string | undefined>): string {
-  return join(ojsHome(env), "config.json");
+/** What you put in: CVs, LinkedIn export, references, writing samples. */
+export function documentsDir(env?: Env): string {
+  return join(workspaceRoot(env), "documents");
 }
 
-export function profileDir(env?: Record<string, string | undefined>): string {
-  return join(ojsHome(env), "profile");
+/** What the tool builds: config, profile, cache, and later jobs and applications. */
+export function dataDir(env?: Env): string {
+  return join(workspaceRoot(env), "data");
+}
+
+export function configPath(env?: Env): string {
+  return join(dataDir(env), "config.json");
+}
+
+export function profileDir(env?: Env): string {
+  return join(dataDir(env), "profile");
+}
+
+export function cacheDir(env?: Env): string {
+  return join(dataDir(env), "cache");
+}
+
+export function writingSamplesDir(env?: Env): string {
+  return join(documentsDir(env), "writing-samples");
 }

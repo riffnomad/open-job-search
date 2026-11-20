@@ -2,55 +2,64 @@
 
 **Find roles early. Find your way in. Apply well.**
 
-An open-source AI job search tool for everyone, whatever your role or background. Use it from the command line (`ojs`) or a local web app. Bring whichever AI you already use: Claude, Codex, Antigravity, DeepSeek, OpenRouter, a local model through Ollama, and more.
+An open-source AI job search assistant for everyone, whatever your role or background. Clone the repo, open the AI agent you already use (Claude Code, Codex, Antigravity, opencode…) inside it, and talk to it. A local web app is coming for people who'd rather not use a terminal.
 
-> **Status: early development.** The foundation (provider layer, CLI, config) works. Job discovery, evaluation and applications are next. See the [roadmap](#roadmap).
+> **Status: early development.** Building your profile from a CV works. Job discovery, evaluation and applications are next. See the [roadmap](#roadmap).
 
 ## What makes it different
 
-- **A real app, not only prompts.** A CLI *and* a local web app over one core, plus a background worker that watches for roles and pings you, instead of only working while an AI session is open.
-- **Any provider, two ways.** Use an API key (Anthropic, any OpenAI-compatible server), *or* the agent CLI you already pay for and are signed in to (`claude`, `codex`, `agy`, `opencode`, …). No extra subscription needed.
+- **An experience bank, not just a CV.** A CV holds a fraction of what you did. Your profile keeps one file per job and grows as your agent interviews you about it, so every application can draw on far more than two pages.
+- **Past lives count.** Bar work, retail, trades, the career before this one: kept with the skills and stories they gave you, and brought back when a role makes them relevant.
 - **Network first.** Referrals beat cold applications. For every good match, it looks for the warmest way in.
-- **Your data stays yours.** Everything lives in `~/.ojs` on your machine, never in this repo. Nothing is sent anywhere except to the AI provider you choose.
+- **Any agent.** Works in whichever agent CLI you use. No extra subscription.
+- **Always on.** A background worker watches for roles and pings you, even when no agent session is open.
 - **UK first, then everywhere.** Starting with London, the UK and remote roles: GBP salaries, UK CV conventions, and the Home Office register of visa sponsors.
 - **You press Submit.** It drafts and recommends. It never applies or sends messages on your behalf.
 
 ## Quick start
 
-Requires [Bun](https://bun.sh) 1.3+.
+Requires [Bun](https://bun.sh) 1.3+ and an agent CLI such as [Claude Code](https://claude.com/claude-code), [Codex](https://github.com/openai/codex), Antigravity or opencode.
 
 ```bash
 git clone https://github.com/riffnomad/open-job-search.git
 cd open-job-search
 bun install
-
-bun run ojs init        # detects installed agent CLIs and API keys
-bun run ojs providers   # see what's configured
-bun run ojs ask "Say hello"
-bun run web             # local web app on http://127.0.0.1:4717
 ```
 
-### Adding a provider
-
-API keys are never written to config. You name the environment variable that holds the key:
+Put your CV (PDF, Word, Markdown or text) in [`documents/`](documents/README.md), then open your agent in the repo and ask it to set you up:
 
 ```bash
-# DeepSeek (or any OpenAI-compatible server)
-bun run ojs providers add deepseek --type openai-compatible \
-  --base-url https://api.deepseek.com/v1 --model deepseek-chat --api-key-env DEEPSEEK_API_KEY
-
-# Ollama, fully local
-bun run ojs providers add local --type openai-compatible \
-  --base-url http://localhost:11434/v1 --model llama3.1
-
-# Anthropic API
-bun run ojs providers add anthropic --type anthropic --model claude-opus-5-5 --api-key-env ANTHROPIC_API_KEY
-
-# Any agent CLI that takes a prompt on stdin
-bun run ojs providers add mine --type agent-cli --command my-agent
+claude        # or codex, agy, opencode
+> Set me up and import my CV
 ```
 
-| Agent CLI preset | Status |
+## Your files
+
+Two folders hold everything personal. Both are ignored by git, so nothing you add ever ends up in the public repo:
+
+- [`documents/`](documents/README.md): what you put in. CVs, references, writing samples.
+- [`data/`](data/README.md): what the tool builds. Your profile (`data/profile/`), settings, cache.
+
+Your profile is plain Markdown and YAML. Read it, edit it, back it up.
+
+## Commands
+
+Your agent runs these for you, but you can too. Every command takes `--json`.
+
+```bash
+bun run ojs init                    # find your agent CLIs and set one as default
+bun run ojs profile                 # overview of your profile
+bun run ojs profile import          # import new files in documents/ (shows changes, asks first)
+bun run ojs profile gaps            # what's missing in each role
+bun run ojs profile edit [role]     # open in your editor, checked when you save
+bun run ojs help                    # everything else
+```
+
+### AI providers
+
+Inside your agent, your agent does the thinking. When `ojs` needs AI on its own (importing a CV from the command line, the web app, the background worker), it calls your agent CLI headless, or an API if you prefer. `ojs init` sets this up.
+
+| Agent CLI | Status |
 |---|---|
 | `claude` (Claude Code) | verified |
 | `codex` (OpenAI Codex) | verified |
@@ -58,14 +67,19 @@ bun run ojs providers add mine --type agent-cli --command my-agent
 | `gemini` (Gemini CLI) | best-effort; Google no longer serves it on the free individual tier |
 | `opencode` | best-effort, help us verify it |
 
-### Using it from an AI agent
+APIs work too. Keys are never written to config; you name the environment variable that holds the key:
 
-Every command takes `--json`, so Claude Code, Codex or any agent can drive `ojs` directly.
+```bash
+bun run ojs providers add deepseek --type openai-compatible \
+  --base-url https://api.deepseek.com/v1 --model deepseek-chat --api-key-env DEEPSEEK_API_KEY
+bun run ojs providers add local --type openai-compatible --base-url http://localhost:11434/v1 --model llama3.1
+bun run ojs providers add anthropic --type anthropic --model claude-opus-5-5 --api-key-env ANTHROPIC_API_KEY
+```
 
 ## Roadmap
 
-1. **Foundation**: provider layer, config, CLI, web and worker skeletons ✅
-2. **Profile**: import a CV (PDF, text, LinkedIn export) into a structured profile
+1. **Foundation**: provider layer, config, tools, web and worker skeletons ✅
+2. **Profile**: CV import ✅, then interviews that deepen each role, past lives, preferences, LinkedIn export
 3. **Discovery**: company job boards (Greenhouse, Lever, Ashby, Workable), UK sources (Adzuna, Reed), remote boards; dedup and liveness checks
 4. **Evaluation**: structured fit scoring with reasons and hard blockers (visa sponsorship, location, level)
 5. **Warm paths**: match roles to your network and draft referral asks
@@ -75,7 +89,7 @@ Every command takes `--json`, so Claude Code, Codex or any agent can drive `ojs`
 
 ## Contributing
 
-Early days, so the shape is still moving. Issues and ideas are very welcome. See [AGENTS.md](AGENTS.md) for how the code is organised and the rules that keep it safe.
+Early days, so the shape is still moving. Issues and ideas are very welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how the code is organised and the rules that keep it safe.
 
 ## License
 

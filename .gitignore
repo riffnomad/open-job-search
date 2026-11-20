@@ -6,20 +6,20 @@ dist/
 .env.*
 !.env.example
 
-# User data never belongs in this repo. It lives in ~/.ojs (or $OJS_HOME).
-# These patterns are a safety net in case someone points OJS_HOME inside the checkout.
-.ojs/
-ojs-data/
-*.cv.pdf
-*.sqlite
-*.sqlite-*
-*.db
+# Your stuff: documents/ (what you put in) and data/ (what ojs builds).
+# Never committed, apart from the READMEs that explain them.
+/documents/*
+!/documents/README.md
+!/documents/writing-samples/
+/documents/writing-samples/*
+!/documents/writing-samples/README.md
+/data/*
+!/data/README.md
 
 # Local planning docs, not published
 docs/plan/
 
-# Safety net: CVs and documents dropped into the repo by mistake.
-# Your documents belong in ~/.ojs/profile/inbox, not here.
+# Safety net: CVs and documents dropped anywhere else in the repo by mistake.
 *.pdf
 *.docx
 *.doc

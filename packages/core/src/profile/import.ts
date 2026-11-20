@@ -8,13 +8,13 @@
  * 3. applyImport: writes the plan (snapshots, 0600, validated).
  */
 import { createHash } from "node:crypto";
-import { access, chmod, copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
+import { access, chmod, copyFile, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { basename, extname, join, relative, resolve, sep } from "node:path";
 import { isMap, isSeq, parseDocument } from "yaml";
 import { z } from "zod";
 import { generateObject } from "../llm/structured.ts";
 import type { LLMProvider } from "../llm/types.ts";
-import { ojsHome } from "../paths.ts";
+import { cacheDir, documentsDir, profileDir } from "../paths.ts";
 import { normalizeDate } from "./dates.ts";
 import { PROFILE_FILE, ROLES_DIR, type Profile } from "./load.ts";
 import {
@@ -86,6 +86,11 @@ export const ExtractedCv = z.object({
 });
 export type ExtractedCv = z.infer<typeof ExtractedCv>;
 
+/** JSON Schema for ExtractedCv, for agents that do the extraction themselves (`ojs profile import --extracted`). */
+export function extractedCvJsonSchema(): Record<string, unknown> {
+  return z.toJSONSchema(ExtractedCv, { io: "input" }) as Record<string, unknown>;
+}
+
 const SYSTEM = `You extract facts from a CV into structured data.
 
 Rules:
@@ -115,7 +120,7 @@ export async function extractCvCached(
   env?: Record<string, string | undefined>,
 ): Promise<{ extracted: ExtractedCv; cached: boolean }> {
   const key = createHash("sha256").update(SYSTEM).update("\0").update(provider.id).update("\0").update(text).digest("hex").slice(0, 32);
-  const dir = join(ojsHome(env), "cache", "import");
+  const dir = join(cacheDir(env), "import");
   const path = join(dir, `${key}.json`);
   try {
     return { extracted: ExtractedCv.parse(JSON.parse(await readFile(path, "utf8"))), cached: true };
@@ -350,37 +355,116 @@ export async function applyImport(dir: string, plan: ImportPlan): Promise<void> 
   if (plan.profileYaml) await writeProfileText(dir, PROFILE_FILE, plan.profileYaml.text);
 }
 
+// ---------------------------------------------------------------------------
+// documents/: the user's own collection. Files stay where they are; we
+// remember a fingerprint of each one we've imported, so running import again
+// only picks up new or changed documents.
+
+export const IMPORT_STATE_FILE = "imports.json";
+const SKIP_DIRS = new Set(["writing-samples"]);
+
+export interface DocumentStatus {
+  /** Path relative to documents/, e.g. "cv/cv-2026.pdf". */
+  file: string;
+  status: "new" | "changed" | "imported";
+  sha256: string;
+}
+
+interface ImportState {
+  files: Record<string, { sha256: string; importedAt: string }>;
+}
+
+async function readState(profile: string): Promise<ImportState> {
+  try {
+    const parsed = JSON.parse(await readFile(join(profile, IMPORT_STATE_FILE), "utf8"));
+    return { files: parsed?.files && typeof parsed.files === "object" ? parsed.files : {} };
+  } catch {
+    return { files: {} };
+  }
+}
+
+export async function sha256File(path: string): Promise<string> {
+  return createHash("sha256").update(await readFile(path)).digest("hex");
+}
+
+async function walk(dir: string, prefix = ""): Promise<string[]> {
+  let names: string[];
+  try {
+    names = await readdir(dir);
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (const name of names.sort()) {
+    if (name.startsWith(".") || name === "README.md") continue;
+    const rel = prefix ? `${prefix}/${name}` : name;
+    const info = await stat(join(dir, name));
+    if (info.isDirectory()) {
+      if (!prefix && SKIP_DIRS.has(name)) continue;
+      out.push(...(await walk(join(dir, name), rel)));
+    } else if (info.isFile()) {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
+/** Every file in documents/ (except writing samples and READMEs), with whether it's been imported. */
+export async function listDocuments(docs = documentsDir(), profile = profileDir()): Promise<DocumentStatus[]> {
+  const state = await readState(profile);
+  const files = await walk(docs);
+  return Promise.all(
+    files.map(async (file) => {
+      const sha256 = await sha256File(join(docs, file));
+      const seen = state.files[file];
+      return { file, sha256, status: !seen ? "new" : seen.sha256 === sha256 ? "imported" : "changed" } as const;
+    }),
+  );
+}
+
+export async function markImported(profile: string, file: string, sha256: string, now = new Date()): Promise<void> {
+  const state = await readState(profile);
+  state.files[file] = { sha256, importedAt: now.toISOString() };
+  await mkdir(profile, { recursive: true, mode: 0o700 });
+  const path = join(profile, IMPORT_STATE_FILE);
+  await writeFile(path, JSON.stringify(state, null, 2) + "\n", { mode: 0o600 });
+}
+
 /**
- * Keep the imported file in sources/, so a later re-read or diff is possible.
- * `move` is for files picked up from inbox/: they leave the inbox once imported.
+ * Make sure an imported source is part of documents/: a file from elsewhere
+ * is copied in, pasted text is saved as a .txt. Returns the path relative to
+ * documents/. A file already inside documents/ is left where it is.
  */
-export async function keepSource(
-  dir: string,
-  src: { path: string; move?: boolean } | { text: string; name: string },
+export async function addToDocuments(
+  docs: string,
+  src: { path: string } | { text: string; name: string },
   now = new Date(),
 ): Promise<string> {
-  const stamp = now.toISOString().slice(0, 10);
-  await mkdir(join(dir, "sources"), { recursive: true, mode: 0o700 });
-  const free = async (stem: string, ext: string) => {
-    for (let n = 1; ; n++) {
-      const rel = `sources/${stem}${n === 1 ? "" : `-${n}`}${ext}`;
-      try {
-        await access(join(dir, rel));
-      } catch {
-        return rel;
-      }
-    }
-  };
-  let rel: string;
+  await mkdir(docs, { recursive: true, mode: 0o700 });
   if ("path" in src) {
-    const ext = extname(src.path);
-    rel = await free(`${stamp}-${slugify(basename(src.path, ext))}`, ext.toLowerCase());
-    if (src.move) await rename(src.path, join(dir, rel));
-    else await copyFile(src.path, join(dir, rel));
-  } else {
-    rel = await free(`${stamp}-${slugify(src.name)}`, ".txt");
-    await writeFile(join(dir, rel), src.text);
+    const abs = resolve(src.path);
+    const root = resolve(docs) + sep;
+    if (abs.startsWith(root)) return relative(docs, abs).split(sep).join("/");
   }
-  await chmod(join(dir, rel), 0o600);
+  // Already there with the same content (same file imported twice, same text pasted twice)?
+  const sha = "path" in src ? await sha256File(src.path) : createHash("sha256").update(src.text).digest("hex");
+  for (const rel of await walk(docs)) if ((await sha256File(join(docs, rel))) === sha) return rel;
+
+  const ext = "path" in src ? extname(src.path).toLowerCase() : ".txt";
+  const stem = "path" in src ? slugify(basename(src.path, extname(src.path))) : `${slugify(src.name)}-${now.toISOString().slice(0, 10)}`;
+  let rel = `${stem}${ext}`;
+  for (let n = 2; await exists(join(docs, rel)); n++) rel = `${stem}-${n}${ext}`;
+  if ("path" in src) await copyFile(src.path, join(docs, rel));
+  else await writeFile(join(docs, rel), src.text);
+  await chmod(join(docs, rel), 0o600);
   return rel;
+}
+
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
