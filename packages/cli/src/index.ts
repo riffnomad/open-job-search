@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import {
   AGENT_CLI_PRESETS,
   ConfigError,
+  ExtractError,
   configPath,
   detectProviders,
   loadConfig,
@@ -75,6 +76,8 @@ const { values, positionals } = parseArgs({
     source: { type: "string" },
     text: { type: "string", multiple: true },
     "dry-run": { type: "boolean", default: false },
+    paste: { type: "boolean", default: false },
+    yes: { type: "boolean", short: "y", default: false },
   },
 });
 
@@ -216,7 +219,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  const known = [ConfigError, ProviderError, ProfileError, ProfileFileError, ProfileLoadError].some((E) => err instanceof E);
+  const known = [ConfigError, ProviderError, ProfileError, ProfileFileError, ProfileLoadError, ExtractError].some((E) => err instanceof E);
   const message = known ? (err as Error).message : String((err as Error)?.stack ?? err);
   if (values.json) console.log(JSON.stringify({ error: message }));
   else console.error(`ojs: ${message}`);

@@ -1,7 +1,18 @@
 import { spawnSync } from "node:child_process";
-import { join } from "node:path";
+import { readFile, stat } from "node:fs/promises";
+import { join, basename } from "node:path";
+import { createInterface } from "node:readline/promises";
 import {
   addBullets,
+  applyImport,
+  extractCvCached,
+  extractText,
+  keepSource,
+  loadConfig,
+  planImport,
+  resolveProvider,
+  tidy,
+  type ImportPlan,
   createEntry,
   ensureProfileYaml,
   findEntryFile,
@@ -22,6 +33,9 @@ import {
 
 export interface ProfileFlags {
   json: boolean;
+  provider?: string;
+  paste?: boolean;
+  yes?: boolean;
   employer?: string;
   title?: string;
   start?: string;
@@ -48,6 +62,8 @@ export const PROFILE_HELP = `Profile commands:
   profile add-bullets <role>  Append to a role: --section <heading> [--sub <project>] --source <s> --text "..." [--text ...] [--dry-run]
                               sources: cv | linkedin | dig | you | inferred (inferred only under "To confirm")
   profile edit [role]         Open in $EDITOR (no role: profile.yaml), then check it
+  profile import <file>       Seed role files from a CV (PDF, DOCX, MD, TXT) using your AI provider
+                              --paste (CV text on stdin)  --dry-run (preview only)  -y, --yes (write without asking)
 `;
 
 const today = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
@@ -222,6 +238,92 @@ async function edit(ref: string | undefined, f: ProfileFlags, out: Out): Promise
   }
 }
 
+function planSummary(plan: ImportPlan): string {
+  const lines: string[] = [];
+  const creates = plan.files.filter((f) => f.action === "create");
+  const updates = plan.files.filter((f) => f.action === "update");
+  const confirmCount = (f: ImportPlan["files"][number]) => f.added.filter((a) => a.startsWith("To confirm:")).length;
+  const describe = (f: ImportPlan["files"][number]) => {
+    const toConfirm = confirmCount(f);
+    const bullets = f.added.length - toConfirm;
+    const parts = [`${bullets} bullet${bullets === 1 ? "" : "s"}`];
+    if (toConfirm) parts.push(`${toConfirm} to confirm`);
+    if (f.frontMatterChanges.length) parts.push(f.frontMatterChanges.join(", "));
+    return `  ${f.file.padEnd(44)} ${parts.join(" · ")}`;
+  };
+  if (creates.length) lines.push("New role files:", ...creates.map(describe));
+  if (updates.length) lines.push(...(lines.length ? [""] : []), "Adding to existing roles:", ...updates.map(describe));
+  if (plan.profileYaml) lines.push(...(lines.length ? [""] : []), `profile.yaml: ${plan.profileYaml.filled.join(", ")}`);
+  if (plan.skipped.length) lines.push(...(lines.length ? [""] : []), "Couldn't import:", ...plan.skipped.map((s) => `  ${s.what}: ${s.reason}`));
+  if (!plan.files.length && !plan.profileYaml) lines.unshift("Nothing new: everything in this CV is already in your profile.");
+  return lines.join("\n");
+}
+
+async function importCmd(file: string | undefined, f: ProfileFlags, out: Out): Promise<void> {
+  const say = (msg: string) => {
+    if (!f.json) console.error(msg);
+  };
+  let text: string;
+  let label: string;
+  let sourceRef: { path: string } | { text: string; name: string };
+  if (f.paste) {
+    text = tidy(await new Response(process.stdin as unknown as ReadableStream).text());
+    if (!text) throw new ProfileError("nothing on stdin. Pipe or paste your CV text, e.g. `pbpaste | ojs profile import --paste`");
+    label = "pasted text";
+    sourceRef = { text, name: "pasted" };
+  } else {
+    if (!file) throw new ProfileError("usage: ojs profile import <cv.pdf|cv.docx|cv.md> [--dry-run] [--yes], or --paste");
+    if ((await stat(file).catch(() => undefined))?.isDirectory()) {
+      throw new ProfileError("importing a LinkedIn export folder isn't built yet. Import your CV file for now.");
+    }
+    const r = await extractText(file);
+    text = r.text;
+    label = basename(file);
+    sourceRef = { path: file };
+    say(`Read ${label}${r.pages ? ` (${r.pages} page${r.pages === 1 ? "" : "s"})` : ""} with ${r.method}.`);
+    for (const w of r.warnings) say(`  note: ${w}`);
+  }
+
+  const provider = resolveProvider(await loadConfig(), f.provider);
+  say(`Sending ${text.length.toLocaleString("en-GB")} characters to ${provider.id} to pull out your roles. This can take a minute.`);
+  const { extracted, cached } = await extractCvCached(provider, text);
+  if (cached) say("(Using the result from last time for this exact text and provider.)");
+
+  const dir = profileDir();
+  const profile = await loadProfile(dir);
+  const yamlText = profile.exists ? await readFile(join(dir, PROFILE_FILE), "utf8") : undefined;
+  const plan = planImport(profile, extracted, { kind: "cv" }, yamlText);
+  const nothing = !plan.files.length && !plan.profileYaml;
+  const summary = planSummary(plan);
+  const data = (written: boolean) => ({
+    source: label,
+    provider: provider.id,
+    written,
+    files: plan.files.map(({ text: _t, ...rest }) => rest),
+    profileYaml: plan.profileYaml?.filled ?? [],
+    skipped: plan.skipped,
+  });
+
+  if (nothing || f["dry-run"]) return out(summary + (nothing ? "" : "\n\nPreview only. Run again without --dry-run to write."), data(false));
+
+  let go = Boolean(f.yes);
+  if (!go && !f.paste && !f.json && process.stdin.isTTY) {
+    console.log(summary + "\n");
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const answer = (await rl.question("Write these? [Y/n] ")).trim().toLowerCase();
+    rl.close();
+    go = answer === "" || answer === "y" || answer === "yes";
+    if (!go) return out("Nothing written.", data(false));
+  } else if (!go) {
+    return out(`${summary}\n\nNothing written yet. Run again with --yes to write (the AI result is cached, so it's instant).`, data(false));
+  }
+
+  await applyImport(dir, plan);
+  const kept = await keepSource(dir, sourceRef);
+  const next = plan.files[0] ? `\nNext: \`ojs profile gaps\` to see what to dig into.` : "";
+  out(`${f.json || !process.stdin.isTTY || f.yes ? summary + "\n\n" : ""}Written. A copy of the source is in ${kept}.${next}`, { ...data(true), kept });
+}
+
 export async function profileCommand(rest: string[], f: ProfileFlags, out: Out): Promise<void> {
   const [sub, ...args] = rest;
   switch (sub) {
@@ -236,6 +338,8 @@ export async function profileCommand(rest: string[], f: ProfileFlags, out: Out):
       return addBulletsCmd(args[0], f, out);
     case "edit":
       return edit(args[0], f, out);
+    case "import":
+      return importCmd(args[0], f, out);
     default:
       // `ojs profile acme` reads naturally as "show acme".
       return show(sub, out);

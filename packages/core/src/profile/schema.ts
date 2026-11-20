@@ -6,9 +6,10 @@
  * `reviewProfile` (later) tells the user what's missing.
  */
 import { z } from "zod";
+import { PartialDate } from "./dates.ts";
 
-const yearMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "must be YYYY-MM, e.g. 2021-03");
-const year = z.union([yearMonth, z.string().regex(/^\d{4}$/, "must be YYYY or YYYY-MM")]);
+const yearMonth = PartialDate;
+const year = PartialDate;
 
 export const LANGUAGE_LEVELS = ["native", "fluent", "professional", "conversational", "basic"] as const;
 

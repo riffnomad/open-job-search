@@ -37,7 +37,7 @@ describe("parse and render", () => {
     const doc = parseProfileFile("role", fixture);
     expect(doc.frontMatter.employer).toBe("Acme Logistics");
     expect(doc.frontMatter.positions).toHaveLength(2);
-    expect(doc.frontMatter.type).toBe("full-time");
+    expect(doc.frontMatter.type).toBeUndefined();
     expect((doc.frontMatter as Record<string, unknown>).team_size).toBe(8);
   });
 

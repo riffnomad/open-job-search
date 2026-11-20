@@ -8,3 +8,5 @@ export * from "./profile/load.ts";
 export * from "./profile/store.ts";
 export * from "./profile/gaps.ts";
 export * from "./profile/extract.ts";
+export * from "./profile/dates.ts";
+export * from "./profile/import.ts";

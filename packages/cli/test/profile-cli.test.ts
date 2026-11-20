@@ -48,3 +48,50 @@ describe("ojs profile --json", () => {
     expect(ojs("profile", "show", "globex").json.error).toMatch(/no role or past life matches/);
   });
 });
+
+describe("ojs profile import --json", () => {
+  test("preview, write, then nothing new; with a stand-in provider", async () => {
+    const { writeFile, chmod } = await import("node:fs/promises");
+    const extracted = {
+      basics: { name: "Riley Test", links: [] },
+      roles: [
+        {
+          employer: "Umbrella Ltd",
+          positions: [{ title: "Barista", start: "2016", end: "2018" }],
+          skills: [],
+          context: [],
+          owned: ["Opened the shop on weekdays."],
+          achievements: [],
+          projects: [],
+          inferred: ["Probably handled cash, as a shop opener"],
+        },
+      ],
+      education: [],
+      certifications: [],
+      languages: [],
+    };
+    const script = join(home, "fake-ai.sh");
+    await writeFile(script, `#!/bin/sh\ncat >/dev/null\nprintf '%s' '${JSON.stringify(extracted)}'\n`);
+    await chmod(script, 0o755);
+    expect(ojs("providers", "add", "fake", "--type", "agent-cli", "--command", script).code).toBe(0);
+    const cv = join(home, "riley.md");
+    await writeFile(cv, "# Riley Test\nBarista at Umbrella Ltd, 2016-2018. Opened the shop on weekdays.\n");
+
+    const preview = ojs("profile", "import", cv, "--provider", "fake", "--dry-run");
+    expect(preview.code).toBe(0);
+    expect(preview.json).toMatchObject({ provider: "fake", written: false, skipped: [] });
+    expect(preview.json.files[0]).toMatchObject({ file: "roles/2016-umbrella-ltd.md", action: "create" });
+
+    const unconfirmed = ojs("profile", "import", cv, "--provider", "fake");
+    expect(unconfirmed.json.written).toBe(false); // --json never writes without --yes
+
+    const written = ojs("profile", "import", cv, "--provider", "fake", "--yes");
+    expect(written.json).toMatchObject({ written: true, profileYaml: ["basics.name"] });
+    expect(written.json.kept).toMatch(/^sources\/\d{4}-\d{2}-\d{2}-riley\.md$/);
+    const shown = ojs("profile", "show", "umbrella").json;
+    const confirm = shown.sections.find((s: { heading: string }) => s.heading === "To confirm");
+    expect(confirm.bullets[0]).toEqual({ text: "Probably handled cash, as a shop opener", source: { kind: "inferred", from: "cv" } });
+
+    expect(ojs("profile", "import", cv, "--provider", "fake", "--yes").json).toMatchObject({ written: false, files: [] });
+  });
+});

@@ -8,8 +8,9 @@
  */
 import { parse as parseYaml, stringify as stringifyYaml, YAMLParseError } from "yaml";
 import { z } from "zod";
+import { PartialDate } from "./dates.ts";
 
-const yearMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "must be YYYY-MM, e.g. 2021-03");
+const yearMonth = PartialDate;
 
 export const ROLE_TYPES = [
   "full-time",
@@ -35,7 +36,7 @@ export const RoleFrontMatter = z.looseObject({
     )
     .min(1, "needs at least one position (title and start date)"),
   location: z.string().optional(),
-  type: z.enum(ROLE_TYPES).default("full-time"),
+  type: z.enum(ROLE_TYPES).optional(), // only when known; never assumed
   industry: z.string().optional(),
   skills: z.array(z.string()).default([]),
 });

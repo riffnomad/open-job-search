@@ -86,7 +86,7 @@ describe("loadProfile", () => {
     await mkdir(join(dir, "roles"));
     await writeFile(join(dir, "roles", "a.md"), "no front matter");
     await writeFile(join(dir, "roles", "b.md"), role("Fine", "2020-01"));
-    await writeFile(join(dir, "roles", "c.md"), "---\nemployer: X\npositions: [{ title: T, start: 2020 }]\n---\n");
+    await writeFile(join(dir, "roles", "c.md"), "---\nemployer: X\npositions: [{ title: T, start: 2020-13 }]\n---\n");
     try {
       await loadProfile(dir);
       throw new Error("expected an error");
