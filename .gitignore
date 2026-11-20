@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# User data never belongs in this repo. It lives in ~/.ojs (or $OJS_HOME).
+# These patterns are a safety net in case someone points OJS_HOME inside the checkout.
+.ojs/
+ojs-data/
+*.cv.pdf
+*.sqlite
+*.sqlite-*
+*.db

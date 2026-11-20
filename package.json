@@ -1,0 +1,21 @@
+{
+  "name": "open-job-search",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Open-source AI job search: find roles early, find your way in, apply well. CLI and local web app, any AI provider.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "ojs": "bun packages/cli/src/index.ts",
+    "web": "bun packages/web/src/server.ts",
+    "worker": "bun packages/worker/src/index.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:cli": "bun build packages/cli/src/index.ts --compile --outfile dist/ojs"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.0"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "@ojs/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": { "ojs": "./src/index.ts" },
+  "dependencies": { "@ojs/core": "workspace:*" }
+}
