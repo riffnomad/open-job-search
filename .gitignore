@@ -14,3 +14,6 @@ ojs-data/
 *.sqlite
 *.sqlite-*
 *.db
+
+# Local planning docs, not published
+docs/plan/

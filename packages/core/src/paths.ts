@@ -14,3 +14,7 @@ export function ojsHome(env: Record<string, string | undefined> = process.env): 
 export function configPath(env?: Record<string, string | undefined>): string {
   return join(ojsHome(env), "config.json");
 }
+
+export function profileDir(env?: Record<string, string | undefined>): string {
+  return join(ojsHome(env), "profile");
+}
