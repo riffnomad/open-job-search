@@ -95,3 +95,30 @@ describe("ojs profile import --json", () => {
     expect(ojs("profile", "import", cv, "--provider", "fake", "--yes").json).toMatchObject({ written: false, files: [] });
   });
 });
+
+describe("ojs profile import (inbox)", () => {
+  test("imports what's in the inbox, moves it to sources/, leaves unreadable files", async () => {
+    const { writeFile, readdir } = await import("node:fs/promises");
+    // Uses the "fake" provider added by the previous test, and the same OJS_HOME.
+    const inbox = join(home, "profile", "inbox");
+    expect(ojs("profile").json.inbox).toEqual([]); // looking creates the folder
+    expect(ojs("profile", "import").json).toEqual({ inbox, results: [] });
+
+    await writeFile(join(inbox, "cv-copy.md"), "# Riley Test\nBarista at Umbrella Ltd, 2016-2018. Opened the shop on weekdays.\nAlso: references.\n");
+    await writeFile(join(inbox, "photo.jpg"), "not really a photo");
+    expect(ojs("profile").json.inbox).toEqual(["cv-copy.md", "photo.jpg"]);
+
+    const preview = ojs("profile", "import", "--provider", "fake", "--dry-run").json;
+    expect(preview.results.map((r: { source: string; written: boolean }) => [r.source, r.written])).toEqual([
+      ["cv-copy.md", false],
+      ["photo.jpg", false],
+    ]);
+    expect((await readdir(inbox)).sort()).toEqual(["cv-copy.md", "photo.jpg"]);
+
+    const run = ojs("profile", "import", "--provider", "fake", "--yes").json;
+    expect(run.results[0]).toMatchObject({ source: "cv-copy.md", kept: expect.stringMatching(/^sources\/\d{4}-\d{2}-\d{2}-cv-copy\.md$/) });
+    expect(run.results[1]).toMatchObject({ source: "photo.jpg", written: false, error: expect.stringMatching(/image/) });
+    expect(await readdir(inbox)).toEqual(["photo.jpg"]);
+    expect(ojs("profile").json.inbox).toEqual(["photo.jpg"]);
+  });
+});

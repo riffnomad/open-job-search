@@ -11,6 +11,7 @@ import { basename, dirname, join } from "node:path";
 import { profileDir } from "../paths.ts";
 import {
   HISTORY_DIR,
+  INBOX_DIR,
   loadProfile,
   PAST_LIVES_DIR,
   PROFILE_FILE,
@@ -40,7 +41,7 @@ export class ProfileError extends Error {
   override name = "ProfileError";
 }
 
-const DIRS = [ROLES_DIR, PAST_LIVES_DIR, WRITING_SAMPLES_DIR, SOURCES_DIR, HISTORY_DIR];
+const DIRS = [INBOX_DIR, ROLES_DIR, PAST_LIVES_DIR, WRITING_SAMPLES_DIR, SOURCES_DIR, HISTORY_DIR];
 
 export async function ensureProfileDirs(dir = profileDir()): Promise<void> {
   await mkdir(dir, { recursive: true, mode: 0o700 });

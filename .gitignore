@@ -17,3 +17,13 @@ ojs-data/
 
 # Local planning docs, not published
 docs/plan/
+
+# Safety net: CVs and documents dropped into the repo by mistake.
+# Your documents belong in ~/.ojs/profile/inbox, not here.
+*.pdf
+*.docx
+*.doc
+*.odt
+*.rtf
+*.pages
+!packages/*/test/fixtures/**

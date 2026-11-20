@@ -6,7 +6,10 @@ import {
   addBullets,
   applyImport,
   extractCvCached,
+  ensureProfileDirs,
+  ExtractError,
   extractText,
+  INBOX_DIR,
   keepSource,
   loadConfig,
   planImport,
@@ -62,7 +65,8 @@ export const PROFILE_HELP = `Profile commands:
   profile add-bullets <role>  Append to a role: --section <heading> [--sub <project>] --source <s> --text "..." [--text ...] [--dry-run]
                               sources: cv | linkedin | dig | you | inferred (inferred only under "To confirm")
   profile edit [role]         Open in $EDITOR (no role: profile.yaml), then check it
-  profile import <file>       Seed role files from a CV (PDF, DOCX, MD, TXT) using your AI provider
+  profile import [file]       Seed role files from a CV (PDF, DOCX, MD, TXT) using your AI provider.
+                              No file: imports everything in your inbox folder (~/.ojs/profile/inbox)
                               --paste (CV text on stdin)  --dry-run (preview only)  -y, --yes (write without asking)
 `;
 
@@ -126,14 +130,19 @@ function overview(p: Profile): string {
   if (who) lines.push("", who);
   const roles = p.roles.map((r) => ({ kind: "role" as const, ...r }));
   const lives = p.pastLives.map((r) => ({ kind: "past-life" as const, ...r }));
+  const inboxNote = p.inbox.length
+    ? `${p.inbox.length} file${p.inbox.length === 1 ? "" : "s"} waiting in your inbox (${p.inbox.join(", ")}). Run \`ojs profile import\`.`
+    : "";
   if (!p.exists && roles.length === 0 && lives.length === 0) {
     return [
       `No profile yet in ${p.dir}.`,
       "",
-      "Start with a role:",
+      inboxNote ||
+        `Drop your CV (PDF, Word, Markdown or text) into\n  ${join(p.dir, INBOX_DIR)}\nand run \`ojs profile import\`.`,
+      "",
+      "Or start by hand:",
       '  ojs profile add role --employer "Acme" --title "Engineer" --start 2021-03',
-      "or set your details and preferences:",
-      "  ojs profile edit",
+      "  ojs profile edit        (your details and preferences)",
     ].join("\n");
   }
   lines.push("", "Roles:");
@@ -142,11 +151,13 @@ function overview(p: Profile): string {
   lines.push("", "Past lives:");
   if (lives.length === 0) lines.push("  none yet. `ojs profile add past-life --field ...`");
   for (const l of lives) lines.push(`  ${label(l).padEnd(24)} ${titles(l)}   ${depthLine(l)}   (${l.file})`);
-  lines.push("", `Writing samples: ${p.writingSamples.length}`, "", "Next: `ojs profile gaps` to see what to dig into.");
+  lines.push("", `Writing samples: ${p.writingSamples.length}`);
+  lines.push("", inboxNote || "Next: `ojs profile gaps` to see what to dig into.");
   return lines.join("\n");
 }
 
 async function show(ref: string | undefined, out: Out): Promise<void> {
+  if (!ref) await ensureProfileDirs(); // so the inbox exists the first time someone looks
   const p = await loadProfile();
   if (ref) {
     const e = resolveEntry(p, ref);
@@ -159,6 +170,7 @@ async function show(ref: string | undefined, out: Out): Promise<void> {
     roles: p.roles.map((r) => entryJson({ kind: "role", ...r }, false)),
     pastLives: p.pastLives.map((l) => entryJson({ kind: "past-life", ...l }, false)),
     writingSamples: p.writingSamples,
+    inbox: p.inbox,
   });
 }
 
@@ -259,34 +271,21 @@ function planSummary(plan: ImportPlan): string {
   return lines.join("\n");
 }
 
-async function importCmd(file: string | undefined, f: ProfileFlags, out: Out): Promise<void> {
-  const say = (msg: string) => {
-    if (!f.json) console.error(msg);
-  };
-  let text: string;
-  let label: string;
-  let sourceRef: { path: string } | { text: string; name: string };
-  if (f.paste) {
-    text = tidy(await new Response(process.stdin as unknown as ReadableStream).text());
-    if (!text) throw new ProfileError("nothing on stdin. Pipe or paste your CV text, e.g. `pbpaste | ojs profile import --paste`");
-    label = "pasted text";
-    sourceRef = { text, name: "pasted" };
-  } else {
-    if (!file) throw new ProfileError("usage: ojs profile import <cv.pdf|cv.docx|cv.md> [--dry-run] [--yes], or --paste");
-    if ((await stat(file).catch(() => undefined))?.isDirectory()) {
-      throw new ProfileError("importing a LinkedIn export folder isn't built yet. Import your CV file for now.");
-    }
-    const r = await extractText(file);
-    text = r.text;
-    label = basename(file);
-    sourceRef = { path: file };
-    say(`Read ${label}${r.pages ? ` (${r.pages} page${r.pages === 1 ? "" : "s"})` : ""} with ${r.method}.`);
-    for (const w of r.warnings) say(`  note: ${w}`);
-  }
+interface ImportSource {
+  label: string;
+  text: string;
+  ref: { path: string; move?: boolean } | { text: string; name: string };
+}
 
-  const provider = resolveProvider(await loadConfig(), f.provider);
-  say(`Sending ${text.length.toLocaleString("en-GB")} characters to ${provider.id} to pull out your roles. This can take a minute.`);
-  const { extracted, cached } = await extractCvCached(provider, text);
+interface ImportOutcome {
+  human: string;
+  data: Record<string, unknown>;
+}
+
+/** Plan one source, show it, confirm, write. Never throws for "nothing new" or "declined". */
+async function importOne(src: ImportSource, f: ProfileFlags, provider: ReturnType<typeof resolveProvider>, say: (m: string) => void): Promise<ImportOutcome> {
+  say(`Sending ${src.text.length.toLocaleString("en-GB")} characters from ${src.label} to ${provider.id} to pull out your roles. This can take a minute.`);
+  const { extracted, cached } = await extractCvCached(provider, src.text);
   if (cached) say("(Using the result from last time for this exact text and provider.)");
 
   const dir = profileDir();
@@ -295,33 +294,100 @@ async function importCmd(file: string | undefined, f: ProfileFlags, out: Out): P
   const plan = planImport(profile, extracted, { kind: "cv" }, yamlText);
   const nothing = !plan.files.length && !plan.profileYaml;
   const summary = planSummary(plan);
-  const data = (written: boolean) => ({
-    source: label,
+  const data = (written: boolean, extra: Record<string, unknown> = {}) => ({
+    source: src.label,
     provider: provider.id,
     written,
     files: plan.files.map(({ text: _t, ...rest }) => rest),
     profileYaml: plan.profileYaml?.filled ?? [],
     skipped: plan.skipped,
+    ...extra,
   });
 
-  if (nothing || f["dry-run"]) return out(summary + (nothing ? "" : "\n\nPreview only. Run again without --dry-run to write."), data(false));
+  if (f["dry-run"]) return { human: `${summary}${nothing ? "" : "\n\nPreview only. Run again without --dry-run to write."}`, data: data(false) };
+  if (nothing) {
+    // Already in the profile: an inbox file is done, so file it away.
+    const kept = "move" in src.ref && src.ref.move ? await keepSource(dir, src.ref) : undefined;
+    return { human: summary + (kept ? `\nMoved to ${kept}.` : ""), data: data(false, kept ? { kept } : {}) };
+  }
 
   let go = Boolean(f.yes);
+  let shown = false;
   if (!go && !f.paste && !f.json && process.stdin.isTTY) {
     console.log(summary + "\n");
+    shown = true;
     const rl = createInterface({ input: process.stdin, output: process.stdout });
     const answer = (await rl.question("Write these? [Y/n] ")).trim().toLowerCase();
     rl.close();
     go = answer === "" || answer === "y" || answer === "yes";
-    if (!go) return out("Nothing written.", data(false));
+    if (!go) return { human: "Nothing written.", data: data(false) };
   } else if (!go) {
-    return out(`${summary}\n\nNothing written yet. Run again with --yes to write (the AI result is cached, so it's instant).`, data(false));
+    return { human: `${summary}\n\nNothing written yet. Run again with --yes to write (the AI result is cached, so it's instant).`, data: data(false) };
   }
 
   await applyImport(dir, plan);
-  const kept = await keepSource(dir, sourceRef);
-  const next = plan.files[0] ? `\nNext: \`ojs profile gaps\` to see what to dig into.` : "";
-  out(`${f.json || !process.stdin.isTTY || f.yes ? summary + "\n\n" : ""}Written. A copy of the source is in ${kept}.${next}`, { ...data(true), kept });
+  const kept = await keepSource(dir, src.ref);
+  const verb = "move" in src.ref && src.ref.move ? "Moved the file to" : "A copy of the source is in";
+  return { human: `${shown ? "" : summary + "\n\n"}Written. ${verb} ${kept}.`, data: data(true, { kept }) };
+}
+
+async function importCmd(file: string | undefined, f: ProfileFlags, out: Out): Promise<void> {
+  const say = (msg: string) => {
+    if (!f.json) console.error(msg);
+  };
+  const readFileSource = async (path: string, move: boolean): Promise<ImportSource> => {
+    if ((await stat(path).catch(() => undefined))?.isDirectory()) {
+      throw new ProfileError(`${basename(path)} is a folder. Importing a LinkedIn export folder isn't built yet; import your CV file for now.`);
+    }
+    const r = await extractText(path);
+    say(`Read ${basename(path)}${r.pages ? ` (${r.pages} page${r.pages === 1 ? "" : "s"})` : ""} with ${r.method}.`);
+    for (const w of r.warnings) say(`  note: ${w}`);
+    return { label: basename(path), text: r.text, ref: { path, move } };
+  };
+
+  if (f.paste) {
+    const text = tidy(await new Response(process.stdin as unknown as ReadableStream).text());
+    if (!text) throw new ProfileError("nothing on stdin. Pipe or paste your CV text, e.g. `pbpaste | ojs profile import --paste`");
+    const provider = resolveProvider(await loadConfig(), f.provider);
+    const r = await importOne({ label: "pasted text", text, ref: { text, name: "pasted" } }, f, provider, say);
+    return out(r.human, r.data);
+  }
+
+  if (file) {
+    const src = await readFileSource(file, false);
+    const provider = resolveProvider(await loadConfig(), f.provider);
+    const r = await importOne(src, f, provider, say);
+    return out(r.human + (r.data.written ? "\nNext: `ojs profile gaps` to see what to dig into." : ""), r.data);
+  }
+
+  // No file: import everything waiting in the inbox.
+  const dir = profileDir();
+  await ensureProfileDirs(dir);
+  const inboxDir = join(dir, INBOX_DIR);
+  const waiting = (await loadProfile(dir)).inbox;
+  if (waiting.length === 0) {
+    return out(`Your inbox is empty. Drop your CV (PDF, Word, Markdown or text) into:\n  ${inboxDir}\nthen run \`ojs profile import\` again. Or import a file directly: \`ojs profile import <file>\`.`, {
+      inbox: inboxDir,
+      results: [],
+    });
+  }
+  const provider = resolveProvider(await loadConfig(), f.provider);
+  const human: string[] = [];
+  const results: Record<string, unknown>[] = [];
+  for (const name of waiting) {
+    say(`\n── ${name} ──`);
+    try {
+      const r = await importOne(await readFileSource(join(inboxDir, name), true), f, provider, say);
+      human.push(`── ${name} ──\n${r.human}`);
+      results.push(r.data);
+    } catch (err) {
+      if (!(err instanceof ProfileError || err instanceof ExtractError)) throw err;
+      human.push(`── ${name} ──\nSkipped, left in the inbox: ${err.message}`);
+      results.push({ source: name, written: false, error: err.message });
+    }
+  }
+  const wrote = results.some((r) => r.written);
+  out(human.join("\n\n") + (wrote ? "\n\nNext: `ojs profile gaps` to see what to dig into." : ""), { inbox: inboxDir, results });
 }
 
 export async function profileCommand(rest: string[], f: ProfileFlags, out: Out): Promise<void> {

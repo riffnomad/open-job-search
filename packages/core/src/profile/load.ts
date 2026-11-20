@@ -10,6 +10,8 @@ export const PROFILE_FILE = "profile.yaml";
 export const ROLES_DIR = "roles";
 export const PAST_LIVES_DIR = "past-lives";
 export const WRITING_SAMPLES_DIR = "writing-samples";
+/** Drop CVs and other documents here; `ojs profile import` picks them up and moves them to sources/. */
+export const INBOX_DIR = "inbox";
 export const SOURCES_DIR = "sources";
 export const HISTORY_DIR = "history";
 
@@ -22,6 +24,8 @@ export interface Profile {
   pastLives: { file: string; doc: PastLifeFile }[];
   /** File names in writing-samples/, for drafting in step 6. */
   writingSamples: string[];
+  /** Files waiting in inbox/ to be imported. */
+  inbox: string[];
 }
 
 /** Every problem found, across all files, so the user can fix them in one go. */
@@ -87,7 +91,8 @@ export async function loadProfile(dir = profileDir()): Promise<Profile> {
   pastLives.sort((a, b) => a.file.localeCompare(b.file));
 
   const writingSamples = (await listDir(join(dir, WRITING_SAMPLES_DIR))).filter((f) => !f.startsWith(".")).sort();
-  return { dir, exists, data, roles, pastLives, writingSamples };
+  const inbox = (await listDir(join(dir, INBOX_DIR))).filter((f) => !f.startsWith(".")).sort();
+  return { dir, exists, data, roles, pastLives, writingSamples, inbox };
 }
 
 /** Current roles sort first; then by most recent end, then start. */

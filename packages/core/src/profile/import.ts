@@ -8,7 +8,7 @@
  * 3. applyImport: writes the plan (snapshots, 0600, validated).
  */
 import { createHash } from "node:crypto";
-import { chmod, copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, chmod, copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { isMap, isSeq, parseDocument } from "yaml";
 import { z } from "zod";
@@ -350,17 +350,35 @@ export async function applyImport(dir: string, plan: ImportPlan): Promise<void> 
   if (plan.profileYaml) await writeProfileText(dir, PROFILE_FILE, plan.profileYaml.text);
 }
 
-/** Keep a copy of the imported file in sources/, so a later re-read or diff is possible. */
-export async function keepSource(dir: string, src: { path: string } | { text: string; name: string }, now = new Date()): Promise<string> {
+/**
+ * Keep the imported file in sources/, so a later re-read or diff is possible.
+ * `move` is for files picked up from inbox/: they leave the inbox once imported.
+ */
+export async function keepSource(
+  dir: string,
+  src: { path: string; move?: boolean } | { text: string; name: string },
+  now = new Date(),
+): Promise<string> {
   const stamp = now.toISOString().slice(0, 10);
   await mkdir(join(dir, "sources"), { recursive: true, mode: 0o700 });
+  const free = async (stem: string, ext: string) => {
+    for (let n = 1; ; n++) {
+      const rel = `sources/${stem}${n === 1 ? "" : `-${n}`}${ext}`;
+      try {
+        await access(join(dir, rel));
+      } catch {
+        return rel;
+      }
+    }
+  };
   let rel: string;
   if ("path" in src) {
     const ext = extname(src.path);
-    rel = `sources/${stamp}-${slugify(basename(src.path, ext))}${ext.toLowerCase()}`;
-    await copyFile(src.path, join(dir, rel));
+    rel = await free(`${stamp}-${slugify(basename(src.path, ext))}`, ext.toLowerCase());
+    if (src.move) await rename(src.path, join(dir, rel));
+    else await copyFile(src.path, join(dir, rel));
   } else {
-    rel = `sources/${stamp}-${slugify(src.name)}.txt`;
+    rel = await free(`${stamp}-${slugify(src.name)}`, ".txt");
     await writeFile(join(dir, rel), src.text);
   }
   await chmod(join(dir, rel), 0o600);
