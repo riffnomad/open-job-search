@@ -21,7 +21,7 @@ Several people can share a workspace, and each can run several searches. Never b
 
 ## Rules
 
-1. **No user data in git, ever.** User files live in `documents/` and `data/`, both ignored. Tests use temp dirs (`OJS_ROOT`). Fixtures are synthetic.
+1. **No user data in git, ever.** User files live in `documents/` and `data/`, both ignored. Tests use temp dirs (`OJS_ROOT`). Fixtures and examples are made up (Acme, Globex, Sam), never taken from a real profile, even your own. The git hooks in `.githooks/` (set up by `bun install`) refuse a commit or message containing a name, employer, email or phone number from any profile in `data/`.
 2. **No secrets in config.** Providers reference env var names (`apiKeyEnv`), never key values.
 3. **Logic lives in core.** If the CLI, the web app and agents need the same thing, it belongs in `@ojs/core`. Interfaces only parse input and render output. Workflow prompts describe what to do and call tools; they don't reimplement logic.
 4. **Every AI call from code goes through `LLMProvider`.** Never import a provider SDK outside `packages/core/src/llm/providers/`. Structured output goes through `generateObject` with a zod schema, so it is validated whatever the provider.

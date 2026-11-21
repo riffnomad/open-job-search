@@ -7,6 +7,7 @@
   "type": "module",
   "workspaces": ["packages/*"],
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
     "ojs": "bun packages/cli/src/index.ts",
     "web": "bun packages/web/src/server.ts",
     "worker": "bun packages/worker/src/index.ts",

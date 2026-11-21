@@ -1,0 +1,3 @@
+#!/bin/sh
+# Refuse commits that contain names from anyone's profile in data/ (the repo is public).
+exec bun packages/cli/src/index.ts privacy check --staged

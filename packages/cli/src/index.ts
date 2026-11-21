@@ -24,6 +24,7 @@ import {
 import pkg from "../package.json" with { type: "json" };
 import { FLOW_HELP, flowCommand } from "./flow.ts";
 import { PEOPLE_HELP, personCommand, searchCommand, workingOnSummary } from "./people.ts";
+import { PRIVACY_HELP, privacyCommand } from "./privacy.ts";
 import { PROFILE_HELP, profileCommand } from "./profile.ts";
 
 const HELP = `ojs: open-job-search
@@ -46,6 +47,7 @@ Commands:
 ${PEOPLE_HELP}
 ${FLOW_HELP}
 ${PROFILE_HELP}
+${PRIVACY_HELP}
 Global options:
   --json                   Machine-readable output (for scripts and AI agents)
   --provider <id>          Use this provider instead of the default
@@ -73,6 +75,8 @@ const { values, positionals } = parseArgs({
     person: { type: "string" },
     search: { type: "string" },
     role: { type: "string", multiple: true },
+    staged: { type: "boolean", default: false },
+    message: { type: "string" },
     version: { type: "boolean", short: "v" },
     help: { type: "boolean", short: "h" },
     type: { type: "string" },
@@ -251,6 +255,8 @@ async function main(): Promise<void> {
       return flowCommand(rest, out);
     case "profile":
       return profileCommand(rest, values, out);
+    case "privacy":
+      return privacyCommand(rest, values, out);
     case "doctor":
       return doctor();
     default:

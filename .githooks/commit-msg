@@ -1,0 +1,3 @@
+#!/bin/sh
+# The same check for the commit message.
+exec bun packages/cli/src/index.ts privacy check --message "$1"
