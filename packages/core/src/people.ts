@@ -5,8 +5,8 @@
  */
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { parseDocument } from "yaml";
+import { basename, join } from "node:path";
+import { parse as parseYaml, parseDocument } from "yaml";
 import {
   activePath,
   activePerson,
@@ -28,7 +28,22 @@ import { slugify } from "./profile/role-file.ts";
 import { ensureProfileDirs, writeProfileText } from "./profile/store.ts";
 import { PROFILE_FILE } from "./profile/load.ts";
 import { readHistory } from "./profile/history.ts";
-import { FIT_LEVELS, fitStatus, loadSearch, parseSearchYaml, searchYamlTemplate, type FitLevel, type FitStatus, type SearchData } from "./search.ts";
+import { FIT_LEVELS, fitStatus, loadSearch, loadUsualPreferences, parseSearchYaml, parseUsualPreferences, searchYamlTemplate, type FitLevel, type FitStatus, type SearchData } from "./search.ts";
+import {
+  checkPreferences,
+  effectivePreferences,
+  hardRules,
+  PREFERENCE_KEYS,
+  priorityWeights,
+  setTopLevelKey,
+  unexplained,
+  USUAL_PREFERENCES_FILE,
+  usualPreferencesTemplate,
+  type EffectivePreferences,
+  type HardRule,
+  type PreferenceKey,
+  type Preferences,
+} from "./preferences.ts";
 
 type Env = Record<string, string | undefined>;
 
@@ -183,9 +198,8 @@ export async function setFit(input: FitInput, env?: Env, now = new Date()): Prom
     profileChange: await latestProfileChange(env, person),
   };
   const dir = join(searchesDir(env, person), id);
-  const doc = parseDocument(await readFile(join(dir, SEARCH_FILE), "utf8"));
-  doc.set("fit", doc.createNode(fit));
-  const text = doc.toString();
+  // Only the fit lines change: comments and the rest of the file stay as they are.
+  const text = setTopLevelKey(await readFile(join(dir, SEARCH_FILE), "utf8"), "fit", fit, { block: true, afterComment: "# fit:", before: "seniority" });
   parseSearchYaml(text);
   const history = await writeProfileText(dir, SEARCH_FILE, text, "fit");
   return { search: id, fit, ...(history ? { history } : {}) };
@@ -305,4 +319,109 @@ export async function migrateLegacy(name: string, env?: Env, now = new Date()): 
     }
   }
   return result;
+}
+
+export interface PreferencesView {
+  /** The search these are for, or null for the person's usual preferences alone. */
+  search: string | null;
+  /** What the search actually uses: its own preferences, else the person's usual ones. */
+  preferences: Preferences;
+  from: EffectivePreferences["from"];
+  /** What rules a job out completely. */
+  hardRules: HardRule[];
+  /** Scoring weights from the order of priorities. */
+  weights: Record<string, number>;
+  /** Things that don't fit together, to raise gently. */
+  warnings: string[];
+  /** Preferences that are set but have no reason yet. */
+  unexplained: PreferenceKey[];
+  /** True when nothing at all is set, in the search or the usual preferences. */
+  empty: boolean;
+}
+
+/** The preferences a search uses (or the usual ones alone, with no search), with what to check. */
+export async function preferencesFor(personFolder: string, searchFolder: string | null): Promise<PreferencesView> {
+  const usual = await loadUsualPreferences(personFolder);
+  const search = searchFolder ? await loadSearch(searchFolder) : undefined;
+  const { preferences, from } = effectivePreferences(usual, search ?? {});
+  return {
+    search: searchFolder ? basename(searchFolder) : null,
+    preferences,
+    from,
+    hardRules: hardRules(preferences),
+    weights: priorityWeights(preferences.priorities),
+    warnings: checkPreferences(preferences),
+    unexplained: unexplained(preferences),
+    empty: !Object.keys(from).length && !Object.keys(preferences.reasons).length,
+  };
+}
+
+export interface SetPreferencesResult {
+  /** "search" (this search's search.yaml) or "usual" (the person's preferences.yaml). */
+  scope: "search" | "usual";
+  search?: string;
+  file: string;
+  set: string[];
+  cleared: string[];
+  history?: number;
+  view: PreferencesView;
+}
+
+/**
+ * Save preferences, given as a YAML (or JSON) mapping of preference to value:
+ * `workMode: [hybrid]`, `salary: { min: 60000 }`. Each one given replaces what
+ * was there; null clears it. Into the active search, or with `usual`, into
+ * the person's usual preferences, which every search falls back on.
+ */
+export async function setPreferences(input: string, opts: { usual?: boolean } = {}, env?: Env): Promise<SetPreferencesResult> {
+  let values: unknown;
+  try {
+    values = parseYaml(input);
+  } catch (err) {
+    throw new PersonError(`--yaml isn't valid YAML: ${(err as Error).message.split("\n")[0]}`);
+  }
+  if (!values || typeof values !== "object" || Array.isArray(values)) throw new PersonError('--yaml must be a mapping of preference to value, e.g. "workMode: [hybrid]"');
+  const keys = Object.keys(values);
+  if (!keys.length) throw new PersonError("--yaml has no preferences in it.");
+  const unknown = keys.filter((k) => !(PREFERENCE_KEYS as string[]).includes(k));
+  if (unknown.length) throw new PersonError(`not a preference: ${unknown.join(", ")}. Preferences: ${PREFERENCE_KEYS.join(", ")}`);
+
+  const person = activePerson(env);
+  const folder = personDirOf(env, person);
+  let dir: string;
+  let file: string;
+  let search: string | undefined;
+  if (opts.usual) {
+    [dir, file] = [folder, USUAL_PREFERENCES_FILE];
+    if (!existsSync(join(dir, file))) await writeProfileText(dir, file, usualPreferencesTemplate(), "create");
+  } else {
+    search = activeSearch(env, person);
+    if (!search) {
+      throw new PersonError(
+        searchIds(env, person).length
+          ? "more than one search: choose one with `ojs search use <name>` or pass --search, or use --usual for preferences that hold for all of them."
+          : "no search yet: `ojs search add <name>` first, or use --usual for their usual preferences.",
+      );
+    }
+    [dir, file] = [join(searchesDir(env, person), search), SEARCH_FILE];
+  }
+
+  let text = await readFile(join(dir, file), "utf8");
+  const set: string[] = [];
+  const cleared: string[] = [];
+  for (const [k, v] of Object.entries(values as Record<string, unknown>)) {
+    text = setTopLevelKey(text, k, v, opts.usual ? {} : { before: "angle" });
+    (v === null ? cleared : set).push(k);
+  }
+  try {
+    if (opts.usual) parseUsualPreferences(text, file);
+    else parseSearchYaml(text, file);
+  } catch (err) {
+    throw new PersonError(`those preferences aren't valid, so nothing was saved: ${(err as Error).message}`);
+  }
+  const action = `prefs: ${[...set, ...cleared.map((c) => `-${c}`)].join(", ")}`;
+  const history = await writeProfileText(dir, file, text, action);
+  const active = opts.usual ? activeSearchOrUndefined(env, person) : search;
+  const view = await preferencesFor(folder, active ? join(searchesDir(env, person), active) : null);
+  return { scope: opts.usual ? "usual" : "search", ...(search ? { search } : {}), file, set, cleared, ...(history ? { history } : {}), view };
 }

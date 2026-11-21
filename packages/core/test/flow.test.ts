@@ -21,7 +21,7 @@ describe("flow", () => {
     const ws = await workspace();
     const s = await flowStatus(ws);
     expect(s.current).toBe("experience");
-    expect(s.steps.map((x) => [x.id, x.state])).toEqual([["experience", "current"], ["past-lives", "locked"], ["targets", "locked"]]);
+    expect(s.steps.map((x) => [x.id, x.state])).toEqual([["experience", "current"], ["past-lives", "locked"], ["targets", "locked"], ["preferences", "locked"]]);
     expect(s.steps[0]!.blockers).toEqual(["No roles yet: import a CV or add a role first."]);
     await expect(markStepDone("experience", ws)).rejects.toThrow(/No roles yet/);
     await expect(markStepDone("past-lives", ws)).rejects.toThrow(/Step 1 comes first/);
@@ -73,10 +73,35 @@ describe("flow", () => {
       'Assess how well the profile backs "Management"',
     ]);
     const after3 = await markStepDone("targets", ws);
-    expect(after3.complete).toBe(true);
-    expect(after3.current).toBeUndefined();
+    expect(after3.current).toBe("preferences");
 
-    expect(await reopenStep("experience", ws)).toEqual(["experience", "past-lives", "targets"]);
+    // Step 4 is per search: it needs one chosen, and remembers which searches are done.
+    expect(after3.steps[3]!.blockers).toEqual(["Choose which search to work on: `ojs search use <name>`."]);
+    const eng = { ...ws, search: join(ws.person, "searches", "eng") };
+    const s4 = (await flowStatus(eng)).steps[3]!;
+    expect(s4.progress).toEqual(["Nothing set yet", "Other searches still to do: Management"]);
+    expect(s4.blockers).toEqual(["Nothing saved for this search yet: `ojs prefs set`."]);
+    await writeFile(join(ws.person, "preferences.yaml"), "version: 1\nlocations: [London]\nworkMode: [hybrid]\nreasons: { workMode: Likes the team days }\n");
+    await writeFile(
+      join(eng.search, "search.yaml"),
+      "name: Engineering\ntargetRoles: [Engineer]\nsalary: { min: 90000, target: 80000 }\npriorities: [pay, growth]\n",
+    );
+    const s4b = (await flowStatus(eng)).steps[3]!;
+    expect(s4b.progress).toEqual(["4 preferences set (2 from their usual ones)", "Priorities: pay, growth", "1 hard rule: Pay at least 90,000 GBP a year", "Other searches still to do: Management"]);
+    expect(s4b.suggestions).toEqual([
+      "Ask if anything would rule a job out",
+      "Ask why: locations, salary, priorities",
+      "Check: The salary minimum (90,000 GBP a year) is above the target (80,000 GBP a year).",
+    ]);
+    const after4 = await markStepDone("preferences", eng);
+    expect(after4.complete).toBe(true);
+    expect(JSON.parse(await readFile(join(eng.search, "flow.json"), "utf8")).done.preferences).toBeString();
+    // Another search starts step 4 afresh, without repeating steps 1 to 3.
+    const mgmt = await flowStatus({ ...ws, search: join(ws.person, "searches", "mgmt") });
+    expect(mgmt.current).toBe("preferences");
+    expect(mgmt.steps[3]!.progress).toContain("2 preferences set (2 from their usual ones)");
+
+    expect(await reopenStep("experience", eng)).toEqual(["experience", "past-lives", "targets", "preferences"]);
     expect((await flowStatus(ws)).current).toBe("experience");
     await expect(markStepDone("nope", ws)).rejects.toThrow(FlowError);
   });

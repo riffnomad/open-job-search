@@ -12,9 +12,11 @@ What open-job-search builds. Everything in this folder except this README is ign
     - `past-lives/`: earlier careers and jobs outside their current field
     - `history.md`: every change to the profile, as a readable log. `ojs profile undo` reverses the latest one
     - `imports.json`: which files in `documents/<person>/` have been imported
+  - `preferences.yaml`: their usual preferences, true for all their searches (`ojs prefs --usual`), with `history.md` beside it
   - `flow.json`: which steps are done
   - `searches/<search>/`: one folder per job search ("software engineering", "product management")
-    - `search.yaml`: what this search is looking for: roles, locations, salary, deal-breakers, and the angle to lead with
+    - `search.yaml`: what this search is looking for: roles and why, how well the profile backs them, preferences that differ from the usual ones (pay, priorities, deal-breakers…), and the angle to lead with
+    - `flow.json`: which of the per-search steps are done
     - `history.md`: every change to it
     - later: the jobs found and applications made for it
   - `cache/`: saved AI results, safe to delete

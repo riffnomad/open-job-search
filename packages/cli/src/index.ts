@@ -24,6 +24,7 @@ import {
 import pkg from "../package.json" with { type: "json" };
 import { FLOW_HELP, flowCommand } from "./flow.ts";
 import { PEOPLE_HELP, personCommand, searchCommand, workingOnSummary } from "./people.ts";
+import { PREFS_HELP, prefsCommand } from "./prefs.ts";
 import { PRIVACY_HELP, privacyCommand } from "./privacy.ts";
 import { PROFILE_HELP, profileCommand } from "./profile.ts";
 
@@ -39,12 +40,14 @@ Commands:
   ask <prompt>             Send a prompt to a provider (handy for testing a setup)
   person                   Who we're working on; add or switch people (see below)
   search                   Their job searches: what they're looking for (see below)
+  prefs                    What they want from a job: work, pay, deal-breakers, priorities (see below)
   flow                     Where you are in the steps, and what's next (see below)
   profile                  Their profile: roles, past lives, details (see below)
   doctor                   Check your setup
   help                     Show this help
 
 ${PEOPLE_HELP}
+${PREFS_HELP}
 ${FLOW_HELP}
 ${PROFILE_HELP}
 ${PRIVACY_HELP}
@@ -80,6 +83,8 @@ const { values, positionals } = parseArgs({
     evidence: { type: "string", multiple: true },
     gap: { type: "string", multiple: true },
     note: { type: "string" },
+    yaml: { type: "string" },
+    usual: { type: "boolean", default: false },
     staged: { type: "boolean", default: false },
     message: { type: "string" },
     version: { type: "boolean", short: "v" },
@@ -119,7 +124,7 @@ const { values, positionals } = parseArgs({
 if (values.person) process.env.OJS_PERSON = values.person;
 if (values.search) process.env.OJS_SEARCH = values.search;
 
-const PERSON_COMMANDS = new Set(["flow", "profile", "search"]);
+const PERSON_COMMANDS = new Set(["flow", "profile", "search", "prefs"]);
 
 function out(human: string, data: unknown): void {
   if (!values.json) return void console.log(human);
@@ -256,6 +261,8 @@ async function main(): Promise<void> {
       return personCommand(rest, out);
     case "search":
       return searchCommand(rest, values, out);
+    case "prefs":
+      return prefsCommand(rest, values, out);
     case "flow":
       return flowCommand(rest, out);
     case "profile":

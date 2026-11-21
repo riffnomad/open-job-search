@@ -9,7 +9,8 @@
 import { access, mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { profileDir, SEARCH_FILE } from "../paths.ts";
-import { parseSearchYaml } from "../search.ts";
+import { parseSearchYaml, parseUsualPreferences } from "../search.ts";
+import { USUAL_PREFERENCES_FILE } from "../preferences.ts";
 import {
   loadProfile,
   parseProfileYaml,
@@ -278,6 +279,7 @@ export async function readProfileText(dir: string, rel: string): Promise<string>
 export function checkProfileText(rel: string, text: string): void {
   if (rel === PROFILE_FILE) parseProfileYaml(text, rel);
   else if (rel === SEARCH_FILE) parseSearchYaml(text, rel);
+  else if (rel === USUAL_PREFERENCES_FILE) parseUsualPreferences(text, rel);
   else if (rel.startsWith(`${ROLES_DIR}/`)) parseProfileFile("role", text, rel);
   else if (rel.startsWith(`${PAST_LIVES_DIR}/`)) parseProfileFile("past-life", text, rel);
   else throw new ProfileError(`${rel} isn't a profile file`);

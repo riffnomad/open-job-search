@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { parse as parseYaml, stringify, YAMLParseError } from "yaml";
 import { z } from "zod";
 import { SEARCH_FILE } from "./paths.ts";
+import { preferencesTemplateBody, preferenceShape, USUAL_PREFERENCES_FILE, UsualPreferences } from "./preferences.ts";
 import { dropNulls, ProfileFileError } from "./profile/role-file.ts";
 
 export const FIT_LEVELS = ["good", "stretch", "leap"] as const;
@@ -45,21 +46,8 @@ export const SearchData = z.object({
   /** Why they want this, in their words. */
   why: z.array(z.string()).default([]),
   fit: Fit.optional(),
-  seniority: z.string().optional(),
-  locations: z.array(z.string()).default([]), // "London", "UK", "Remote (UK)"
-  workMode: z.array(z.enum(["remote", "hybrid", "onsite"])).default([]),
-  salary: z
-    .object({
-      min: z.number().positive(),
-      target: z.number().positive().optional(),
-      currency: z.string().length(3).default("GBP"),
-      period: z.enum(["year", "day", "hour"]).default("year"),
-    })
-    .optional(),
-  dealBreakers: z.array(z.string()).default([]),
-  industries: z
-    .object({ prefer: z.array(z.string()).default([]), avoid: z.array(z.string()).default([]) })
-    .default({ prefer: [], avoid: [] }),
+  // Preferences: only what differs from the person's usual ones (preferences.ts).
+  ...preferenceShape,
   /** How to present the same experience for this search. Tailoring uses it to choose what to lead with. */
   angle: z
     .object({
@@ -72,7 +60,7 @@ export const SearchData = z.object({
 });
 export type SearchData = z.infer<typeof SearchData>;
 
-export function parseSearchYaml(text: string, file = SEARCH_FILE): SearchData {
+function parseYamlWith<T extends z.ZodType>(schema: T, text: string, file: string): z.infer<T> {
   let raw: unknown;
   try {
     raw = parseYaml(text) ?? {};
@@ -80,9 +68,30 @@ export function parseSearchYaml(text: string, file = SEARCH_FILE): SearchData {
     const msg = err instanceof YAMLParseError ? err.message.split("\n")[0]!.replace(/:\s*$/, "") : String(err);
     throw new ProfileFileError(file, `not valid YAML: ${msg}`);
   }
-  const result = SearchData.safeParse(dropNulls(raw));
+  const result = schema.safeParse(dropNulls(raw));
   if (!result.success) throw new ProfileFileError(file, `invalid:\n${z.prettifyError(result.error)}`);
   return result.data;
+}
+
+export function parseSearchYaml(text: string, file = SEARCH_FILE): SearchData {
+  return parseYamlWith(SearchData, text, file);
+}
+
+/** data/<person>/preferences.yaml: their usual preferences. */
+export function parseUsualPreferences(text: string, file = USUAL_PREFERENCES_FILE): UsualPreferences {
+  return parseYamlWith(UsualPreferences, text, file);
+}
+
+/** A person's usual preferences, or undefined when they haven't any yet. */
+export async function loadUsualPreferences(personFolder: string): Promise<UsualPreferences | undefined> {
+  const path = join(personFolder, USUAL_PREFERENCES_FILE);
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch {
+    return undefined;
+  }
+  return parseUsualPreferences(text, path);
 }
 
 export async function loadSearch(dir: string): Promise<SearchData> {
@@ -102,12 +111,11 @@ name: ${yamlString(name)}
 targetRoles: ${targetRoles.length ? `[${targetRoles.map(yamlString).join(", ")}]` : "[]"}${targetRoles.length ? "" : "   # e.g. [Backend engineer, Platform engineer]"}
 why:${why.length ? `\n${why.map((w) => `  - ${yamlString(w)}`).join("\n")}` : " []               # why they want this, in their words"}
 # fit: set with \`ojs search fit\`: how well the profile backs this search
-seniority:         # e.g. senior, lead
-locations: []      # e.g. [London, Remote (UK)]
-workMode: []       # remote | hybrid | onsite
-salary:            # { min: 60000, target: 70000, currency: GBP, period: year }
-dealBreakers: []   # anything that rules a job out
-industries: { prefer: [], avoid: [] }
+
+# What this search wants. Leave a preference empty to use your usual one
+# (data/<you>/preferences.yaml); deal-breakers add to your usual ones.
+# Change them with \`ojs prefs set\`.
+${preferencesTemplateBody()}
 
 angle:             # how to present your experience for this search
   theyBuy:         # what an employer hiring for this is really buying

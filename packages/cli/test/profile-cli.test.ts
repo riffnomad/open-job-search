@@ -189,7 +189,7 @@ describe("ojs flow --json", () => {
   test("status, done, and order", () => {
     const s = ojs("flow").json;
     expect(s.current).toBe("experience");
-    expect(s.steps.map((x: { id: string; state: string }) => `${x.id}:${x.state}`)).toEqual(["experience:current", "past-lives:locked", "targets:locked"]);
+    expect(s.steps.map((x: { id: string; state: string }) => `${x.id}:${x.state}`)).toEqual(["experience:current", "past-lives:locked", "targets:locked", "preferences:locked"]);
     expect(ojs("flow", "done", "past-lives").json.error).toMatch(/Step 1 comes first/);
     expect(ojs("flow", "done", "experience").json.current).toBe("past-lives");
     expect(ojs("flow", "reopen", "1").json.reopened).toEqual(["experience"]);
@@ -246,5 +246,28 @@ describe("people and searches --json", () => {
     const active = JSON.parse(await readFile(join(home, "data", "active.json"), "utf8"));
     expect(active).toEqual({ version: 1, person: "sam-lee", search: { riley: "software-engineering" } });
     expect(ojs("person", "use", "riley").json.person.id).toBe("riley");
+  });
+});
+
+describe("ojs prefs --json", () => {
+  test("usual preferences, a search's own, the merged view, history and undo", () => {
+    ojs("person", "use", "riley");
+    ojs("search", "use", "software-engineering");
+    const u = ojs("prefs", "set", "--usual", "--yaml", "{locations: [London], workMode: [hybrid], dealBreakers: [{rule: No on-call, why: Burnt out}]}");
+    expect(u.json).toMatchObject({ scope: "usual", set: ["locations", "workMode", "dealBreakers"] });
+    const r = ojs("prefs", "set", "--yaml", "{salary: {min: 70000, target: 80000, ask: 85000}, priorities: [flexibility, pay], reasons: {priorities: School pickup}}");
+    expect(r.workingOn).toEqual({ person: "riley", search: "software-engineering" });
+    const v = ojs("prefs").json;
+    expect(v.from).toMatchObject({ locations: "usual", salary: "search", priorities: "search" });
+    expect(v.hardRules).toEqual([{ rule: "No on-call", why: "Burnt out" }, { rule: "Pay at least 70,000 GBP a year" }]);
+    expect(v.weights).toEqual({ flexibility: 0.67, pay: 0.33 });
+    expect(v.unexplained).toEqual(["locations", "workMode", "salary"]);
+    expect(ojs("prefs", "--usual").json.search).toBeNull();
+    expect(ojs("prefs", "set", "--yaml", "vibes: good").json.error).toMatch(/not a preference/);
+    expect(ojs("prefs", "history").json.entries[0].action).toBe("prefs: salary, priorities, reasons");
+    expect(ojs("prefs", "undo", "--yes").json.written).toBe(true);
+    expect(ojs("prefs").json.preferences.salary).toBeUndefined();
+    // The flow shows step 4 for the active search.
+    expect(ojs("flow").json.steps[3]).toMatchObject({ id: "preferences", scope: "search" });
   });
 });

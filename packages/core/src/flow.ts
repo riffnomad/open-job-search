@@ -9,7 +9,8 @@
  * second search starts those steps afresh, and never repeats discovery.
  *
  * Steps 1 and 2 are discovery: learn as much as possible about the person
- * before looking at any job.
+ * before looking at any job. Step 3 turns that into searches; step 4 is done
+ * for each search.
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -18,7 +19,7 @@ import { findGaps } from "./profile/gaps.ts";
 import { listDocuments } from "./profile/import.ts";
 import { loadProfile } from "./profile/load.ts";
 import { sectionBullets } from "./profile/role-file.ts";
-import { searchSummaries } from "./people.ts";
+import { preferencesFor, searchSummaries } from "./people.ts";
 
 export const FLOW_FILE = "flow.json";
 
@@ -58,6 +59,14 @@ export const FLOW_STEPS: readonly FlowStepInfo[] = [
     about: "What you want to look for and why, how well your profile backs it, and how many searches that makes.",
     skills: ["targets"],
     scope: "person",
+  },
+  {
+    id: "preferences",
+    n: 4,
+    title: "What you want from the job",
+    about: "Where and how you want to work, pay, the kind of company, what rules a job out, and what matters most. With the reason for each.",
+    skills: ["preferences"],
+    scope: "search",
   },
 ] as const;
 
@@ -177,9 +186,34 @@ export async function flowStatus(opts: FlowOptions = {}): Promise<FlowStatus> {
         else if (x.needsAssessing) suggestions.push(`"${x.name}": the profile has ${plural(x.changesSince, "change")} since its fit was assessed; check it again`);
       }
       if (!searches.length) blockers.push("No searches yet: decide what to look for first.");
+    } else if (info.id === "preferences" && opts.search) {
+      const v = await preferencesFor(person, opts.search);
+      const p = v.preferences;
+      const set = Object.keys(v.from);
+      const usual = set.filter((k) => v.from[k as keyof typeof v.from] === "usual").length;
+      progress.push(set.length ? `${plural(set.length, "preference")} set${usual ? ` (${usual} from their usual ones)` : ""}` : "Nothing set yet");
+      if (p.priorities.length) progress.push(`Priorities: ${p.priorities.join(", ")}`);
+      if (v.hardRules.length) progress.push(`${plural(v.hardRules.length, "hard rule")}: ${v.hardRules.map((r) => r.rule).join("; ")}`);
+      if (!p.workMode.length && !p.locations.length) suggestions.push("Where and how they want to work (remote, hybrid, office; places)");
+      if (!p.salary) suggestions.push("Talk about pay: their current package, then a minimum, a target and an opening ask");
+      else if (!p.salary.min) suggestions.push("Agree a salary minimum: the walk-away number");
+      if (!p.priorities.length) suggestions.push("Put what matters most in order (pay, flexibility, growth, …)");
+      if (!p.dealBreakers.length) suggestions.push("Ask if anything would rule a job out");
+      if (v.unexplained.length) suggestions.push(`Ask why: ${v.unexplained.join(", ")}`);
+      for (const w of v.warnings) suggestions.push(`Check: ${w}`);
+      if (v.empty) blockers.push("Nothing saved for this search yet: `ojs prefs set`.");
     }
 
-    if (info.scope === "search" && !opts.search) blockers.push("Needs a search first: `ojs search add <name>`.");
+    if (info.scope === "search") {
+      if (!opts.search) blockers.push(searches.length ? "Choose which search to work on: `ojs search use <name>`." : "Needs a search first: `ojs search add <name>`.");
+      // Search steps are done per search: name the other searches still waiting on this one.
+      const waiting: string[] = [];
+      for (const x of searches) {
+        const dir = join(person, "searches", x.id);
+        if (dir !== opts.search && !(await readState(dir)).done[info.id]) waiting.push(x.name);
+      }
+      if (waiting.length) progress.push(`Other searches still to do: ${waiting.join(", ")}`);
+    }
     const doneAt = states[info.scope].done[info.id];
     let stepState: FlowStepStatus["state"];
     if (doneAt) stepState = "done";
