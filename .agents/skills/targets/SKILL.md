@@ -1,6 +1,6 @@
 ---
 name: targets
-description: Step 3 of the flow. Find out which roles the person wants to look for and why, check each honestly but gently against their profile, decide with them how many searches that makes, and save each search with its reasons and fit. Also whenever they want to start a new search later ("I also want to look at product roles"), and when `ojs flow` or `ojs search` says a fit needs checking again.
+description: Step 3 of the flow. Find out which roles the person wants to look for and why, check each honestly but gently against their profile, decide with them how many searches that makes, build the job titles each search looks for, and save each search with its reasons, titles and fit. Also whenever they want to start a new search later ("I also want to look at product roles"), and when `ojs flow` or `ojs search` says a fit needs checking again.
 ---
 
 # Roles to aim for
@@ -15,6 +15,7 @@ If they already have searches (`bun run ojs search --json` lists them) and want 
 
 - Anything new goes into the profile first, the usual way: a new CV through [import-cv](../import-cv/SKILL.md), a new role with `profile add role`, then [dig](../dig/SKILL.md) for the detail. Keep it short; this isn't step 1 again.
 - Then re-check every search whose fit has `needsAssessing: true` (section 4), and save the new fit even if it hasn't changed, so it's current.
+- A search with no titles yet (`ojs search titles --json` says `empty: true`) gets them now (section 7).
 
 ## 1. What do they want to look for?
 
@@ -59,17 +60,31 @@ A search is one set of roles that share a CV, a pitch and preferences. Propose a
 
 Name each search in their words ("Software engineering", "Engineering leadership").
 
-## 7. Save
+## 7. Titles to search for
 
-For each search, show exactly what you'll save (name, roles, their reasons, the fit with evidence and gaps), then on their yes:
+For each search, turn the roles they named into the titles job ads actually use. Their words stay in `targetRoles`; the titles are what later steps search for and match against. Four lists:
+
+- **core**: the titles they'd call the job, as ads write them. "Senior backend roles" becomes `Senior Backend Engineer`, `Senior Software Engineer, Backend`.
+- **related**: other titles the profile backs, each with why, in the words of the evidence: "Your billing work fits `Payments Engineer` too." Suggest a few, keep only the ones they want.
+- **open**: titles that don't show seniority. A title is one clue to level, not the test: flat companies call everyone `Member of Technical Staff`, startups say `Engineer` for any level, and some companies inflate titles. Ask: "Some companies don't use titles like Principal. Would you look at a flat title like Member of Technical Staff if the pay and the work were right?" Save each with the condition, in plain words (`if: pay at or above target`, `if: the ad describes setting technical direction`), and why. Pay and other numbers come in step 4; the condition can point at them.
+- **exclude**: words that rule an ad out by its title alone (`Junior`, `Graduate`, `Intern`). Keep it short: a word here hides every ad with it. Never exclude a word that's in one of their own titles.
+
+Think about the field and the market: titles differ between industries, countries and company sizes (a "Director" at a bank and at a startup are different jobs). This isn't only for tech: `Staff Nurse` and `Charge Nurse`, `Account Executive` and `Sales Representative` are the same kind of question.
+
+Later steps judge seniority from the whole ad (pay, scope, years asked for, who it reports to), not the title. An open title is checked against its condition; a lower title whose pay and scope fit is shown with a note, not hidden.
+
+## 8. Save
+
+For each search, show exactly what you'll save (name, roles, their reasons, the titles, the fit with evidence and gaps), then on their yes:
 
 1. `bun run ojs search add "<name>" --role "<title>" [--role …] --why "<their reason>" [--why …] --json` (it becomes the active search)
-2. `bun run ojs search fit --level <good|stretch|leap> --evidence "<what backs it>" [--evidence …] --gap "<what's missing>" [--gap …] [--note "<stepping stone offered, what they decided>"] --json`
+2. `bun run ojs search titles --yaml '{core: [Staff Engineer], related: [{title: Platform Architect, why: "Led the platform rebuild at Acme"}], open: [{title: Member of Technical Staff, if: pay at or above target, why: "Flat companies don't use levels"}], exclude: [Junior, Intern]}' --json`. Each list given replaces that list; `null` empties one. Read `warnings` (a word that rules out one of their own titles, a title listed twice) and `unexplained`.
+3. `bun run ojs search fit --level <good|stretch|leap> --evidence "<what backs it>" [--evidence …] --gap "<what's missing>" [--gap …] [--note "<stepping stone offered, what they decided>"] --json`
 
 Evidence points at real things in the profile ("Checkout rebuild at Acme: led it, failed payments down 30%"). Gaps are plain and kind ("No experience managing a budget yet"). The fit is stamped with the profile's latest change, so `ojs search` and `ojs flow` can tell when it needs checking again.
 
 To change a search's roles or reasons afterwards: `bun run ojs search correct --find "…" --replace "…" --json` (with `--search <name>` if it isn't the active one).
 
-## 8. Finishing
+## 9. Finishing
 
-When every role they want has a search with reasons and a fit, sum up in a sentence or two: the searches, and for each how strong the profile is. Ask if they're happy to move on; on a yes, `bun run ojs flow done targets --json`.
+When every role they want has a search with reasons, titles and a fit, sum up in a sentence or two: the searches, and for each how strong the profile is. Ask if they're happy to move on; on a yes, `bun run ojs flow done targets --json`.

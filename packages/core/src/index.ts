@@ -6,6 +6,7 @@ export * from "./flow.ts";
 export * from "./people.ts";
 export * from "./search.ts";
 export * from "./preferences.ts";
+export * from "./titles.ts";
 export * from "./privacy.ts";
 export * from "./profile/role-file.ts";
 export * from "./profile/schema.ts";

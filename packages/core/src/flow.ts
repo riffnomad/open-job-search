@@ -9,7 +9,7 @@
  * second search starts those steps afresh, and never repeats discovery.
  *
  * Steps 1 and 2 are discovery: learn as much as possible about the person
- * before looking at any job. Step 3 turns that into searches; step 4 is done
+ * before looking at any job. Step 3 turns that into searches, each with the titles it looks for; step 4 is done
  * for each search.
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -20,6 +20,7 @@ import { listDocuments } from "./profile/import.ts";
 import { loadProfile } from "./profile/load.ts";
 import { sectionBullets } from "./profile/role-file.ts";
 import { preferencesFor, searchSummaries } from "./people.ts";
+import { checkTitles, titlesEmpty } from "./titles.ts";
 
 export const FLOW_FILE = "flow.json";
 
@@ -56,7 +57,7 @@ export const FLOW_STEPS: readonly FlowStepInfo[] = [
     id: "targets",
     n: 3,
     title: "Roles to aim for",
-    about: "What you want to look for and why, how well your profile backs it, and how many searches that makes.",
+    about: "What you want to look for and why, how well your profile backs it, how many searches that makes, and the job titles each one looks for.",
     skills: ["targets"],
     scope: "person",
   },
@@ -182,6 +183,11 @@ export async function flowStatus(opts: FlowOptions = {}): Promise<FlowStatus> {
       for (const x of searches) {
         if (!x.targetRoles.length) suggestions.push(`Add target roles to "${x.name}"`);
         if (!x.why.length) suggestions.push(`Ask why they want "${x.name}"`);
+        if (titlesEmpty(x.titles)) suggestions.push(`Build the titles to search for "${x.name}": exact ones, similar ones the profile backs, flat titles worth a look, words that rule a title out`);
+        else {
+          if (!x.titles!.open.length) suggestions.push(`"${x.name}": ask about titles that don't show seniority (Member of Technical Staff at a flat company), and when they'd be worth a look`);
+          for (const w of checkTitles(x.titles!)) suggestions.push(`"${x.name}": ${w}`);
+        }
         if (!x.fit) suggestions.push(`Assess how well the profile backs "${x.name}"`);
         else if (x.needsAssessing) suggestions.push(`"${x.name}": the profile has ${plural(x.changesSince, "change")} since its fit was assessed; check it again`);
       }
@@ -194,6 +200,8 @@ export async function flowStatus(opts: FlowOptions = {}): Promise<FlowStatus> {
       progress.push(set.length ? `${plural(set.length, "preference")} set${usual ? ` (${usual} from their usual ones)` : ""}` : "Nothing set yet");
       if (p.priorities.length) progress.push(`Priorities: ${p.priorities.join(", ")}`);
       if (v.hardRules.length) progress.push(`${plural(v.hardRules.length, "hard rule")}: ${v.hardRules.map((r) => r.rule).join("; ")}`);
+      const here = searches.find((x) => join(person, "searches", x.id) === opts.search);
+      if (here && titlesEmpty(here.titles)) suggestions.push("This search has no titles to search for yet (step 3's list): build them with `ojs search titles` (see the targets skill)");
       if (!p.workMode.length && !p.locations.length) suggestions.push("Where and how they want to work (remote, hybrid, office; places)");
       if (!p.salary) suggestions.push("Talk about pay: their current package, then a minimum, a target and an opening ask");
       else if (!p.salary.min) suggestions.push("Agree a salary minimum: the walk-away number");

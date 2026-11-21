@@ -59,17 +59,18 @@ describe("flow", () => {
     expect(targets.progress).toEqual(["No searches yet"]);
     expect(targets.blockers).toEqual(["No searches yet: decide what to look for first."]);
     await mkdir(join(ws.person, "searches", "eng"), { recursive: true });
-    await writeFile(join(ws.person, "searches", "eng", "search.yaml"), "name: Engineering\ntargetRoles: [Engineer]\nwhy: [Loves it]\nfit: { level: good, assessedAt: 2026-11-21, profileChange: 1 }\n");
+    await writeFile(join(ws.person, "searches", "eng", "search.yaml"), "name: Engineering\ntargetRoles: [Engineer]\nwhy: [Loves it]\ntitles: { core: [Engineer], open: [{ title: Member of Technical Staff, if: pay at or above target }] }\nfit: { level: good, assessedAt: 2026-11-21, profileChange: 1 }\n");
     await mkdir(join(ws.person, "searches", "mgmt"), { recursive: true });
     await writeFile(join(ws.person, "searches", "mgmt", "search.yaml"), "name: Management\n");
     const s3 = (await flowStatus(ws)).steps[2]!;
     expect(s3.progress).toEqual(["2 searches: Engineering, Management"]);
-    expect(s3.suggestions).toEqual(['Add target roles to "Management"', 'Ask why they want "Management"', 'Assess how well the profile backs "Management"']);
+    expect(s3.suggestions).toEqual(['Add target roles to "Management"', 'Ask why they want "Management"', 'Build the titles to search for "Management": exact ones, similar ones the profile backs, flat titles worth a look, words that rule a title out', 'Assess how well the profile backs "Management"']);
     await addBullets("acme", { section: "Stories", texts: ["Another story."], source: { kind: "dig", date: "2026-11-21" } }, ws.profile);
     expect((await flowStatus(ws)).steps[2]!.suggestions).toEqual([
       '"Engineering": the profile has 1 change since its fit was assessed; check it again',
       'Add target roles to "Management"',
       'Ask why they want "Management"',
+      'Build the titles to search for "Management": exact ones, similar ones the profile backs, flat titles worth a look, words that rule a title out',
       'Assess how well the profile backs "Management"',
     ]);
     const after3 = await markStepDone("targets", ws);
@@ -89,6 +90,7 @@ describe("flow", () => {
     const s4b = (await flowStatus(eng)).steps[3]!;
     expect(s4b.progress).toEqual(["4 preferences set (2 from their usual ones)", "Priorities: pay, growth", "1 hard rule: Pay at least 90,000 GBP a year", "Other searches still to do: Management"]);
     expect(s4b.suggestions).toEqual([
+      "This search has no titles to search for yet (step 3's list): build them with `ojs search titles` (see the targets skill)",
       "Ask if anything would rule a job out",
       "Ask why: locations, salary, priorities",
       "Check: The salary minimum (90,000 GBP a year) is above the target (80,000 GBP a year).",

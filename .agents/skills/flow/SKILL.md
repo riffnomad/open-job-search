@@ -13,7 +13,7 @@ open-job-search works in steps. Each step is finished before the next one starts
 |---|---|---|
 | 1. Your experience | Their CV, then everything it left out, role by role | [import-cv](../import-cv/SKILL.md), then [dig](../dig/SKILL.md) |
 | 2. Past lives | Other jobs, before or alongside their career, and what they gave them | [past-lives](../past-lives/SKILL.md), then [dig](../dig/SKILL.md) |
-| 3. Roles to aim for | What they want to look for and why, how well the profile backs it, and how many searches that makes | [targets](../targets/SKILL.md) |
+| 3. Roles to aim for | What they want to look for and why, how well the profile backs it, how many searches that makes, and the titles each one looks for | [targets](../targets/SKILL.md) |
 | 4. What you want from the job | Where and how they work, pay, the kind of company, what rules a job out, what matters most, and why. For each search | [preferences](../preferences/SKILL.md) |
 
 More steps (the angle to lead with, finding roles, evaluation, applications…) come later. Steps 1 to 3 are done once per person. Step 4 onwards is done for each **search** (what they're looking for, e.g. "software engineering" and "product management"), so starting a second search never repeats discovery. For search steps, say which search you're on, and when `progress` lists "Other searches still to do", offer to do those next (`ojs search use <name>`).

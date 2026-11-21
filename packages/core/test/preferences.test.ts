@@ -63,6 +63,7 @@ describe("preferences", () => {
     expect(setTopLevelKey(text, "locations", null)).toBe("name: X\nlocations:         # e.g. [London]\nsalary:\n  min: 1\n  target: 2\n# about angle\nangle:\n  theyBuy:\n");
     expect(setTopLevelKey(text, "hours", "4-day week", { before: "angle" })).toContain("target: 2\n# about angle\nhours: 4-day week\nangle:");
     expect(setTopLevelKey("a: 1\n", "b", "x: y")).toBe('a: 1\nb: "x: y"\n');
+    expect(setTopLevelKey("why: []\n# fit: later\n", "titles", { core: ["A"] }, { block: true, afterComment: "# titles:", beforeComment: "# fit:" })).toBe("why: []\ntitles:\n  core:\n    - A\n# fit: later\n");
     // Long values as a block; replacing a block replaces all of it.
     const withFit = setTopLevelKey("name: X\n# fit: set later\nangle:\n", "fit", { level: "good", evidence: ["A", "B"] }, { block: true, afterComment: "# fit:" });
     expect(withFit).toBe("name: X\n# fit: set later\nfit:\n  level: good\n  evidence:\n    - A\n    - B\nangle:\n");

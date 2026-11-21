@@ -28,6 +28,7 @@ import { slugify } from "./profile/role-file.ts";
 import { ensureProfileDirs, writeProfileText } from "./profile/store.ts";
 import { PROFILE_FILE } from "./profile/load.ts";
 import { readHistory } from "./profile/history.ts";
+import { checkTitles, emptyTitles, TITLE_LISTS, Titles, titlesEmpty, titlesUnexplained, type TitleList } from "./titles.ts";
 import { FIT_LEVELS, fitStatus, loadSearch, loadUsualPreferences, parseSearchYaml, parseUsualPreferences, searchYamlTemplate, type FitLevel, type FitStatus, type SearchData } from "./search.ts";
 import {
   checkPreferences,
@@ -64,6 +65,7 @@ export interface SearchInfo {
 
 export interface SearchSummary extends SearchInfo, FitStatus {
   why: string[];
+  titles?: Titles;
 }
 
 /** The latest entry in a person's profile history: what a fit assessment is stamped with. */
@@ -165,13 +167,13 @@ export async function searchSummaries(personFolder: string, activeId?: string): 
   }
   const out: SearchSummary[] = [];
   for (const id of ids) {
-    let data: Pick<SearchData, "name" | "targetRoles" | "why" | "fit"> = { name: id, targetRoles: [], why: [] };
+    let data: Pick<SearchData, "name" | "targetRoles" | "why" | "fit" | "titles"> = { name: id, targetRoles: [], why: [] };
     try {
       data = await loadSearch(join(root, id));
     } catch {
       // a broken search.yaml still shows up, by id; `search show` reports the problem
     }
-    out.push({ id, name: data.name, targetRoles: data.targetRoles, why: data.why, active: id === activeId, ...fitStatus(data, latest) });
+    out.push({ id, name: data.name, targetRoles: data.targetRoles, why: data.why, ...(data.titles ? { titles: data.titles } : {}), active: id === activeId, ...fitStatus(data, latest) });
   }
   return out;
 }
@@ -203,6 +205,82 @@ export async function setFit(input: FitInput, env?: Env, now = new Date()): Prom
   parseSearchYaml(text);
   const history = await writeProfileText(dir, SEARCH_FILE, text, "fit");
   return { search: id, fit, ...(history ? { history } : {}) };
+}
+
+export interface TitlesView {
+  search: string;
+  targetRoles: string[];
+  titles: Titles;
+  empty: boolean;
+  warnings: string[];
+  /** Related and open titles with no reason yet. */
+  unexplained: string[];
+}
+
+export function titlesView(search: string, data: Pick<SearchData, "targetRoles" | "titles">): TitlesView {
+  const titles = data.titles ?? emptyTitles();
+  return { search, targetRoles: data.targetRoles, titles, empty: titlesEmpty(titles), warnings: checkTitles(titles), unexplained: titlesUnexplained(titles) };
+}
+
+function requireActiveSearch(env: Env | undefined, person: string): string {
+  const id = activeSearch(env, person);
+  if (!id) throw new PersonError(searchIds(env, person).length ? "more than one search: choose one with `ojs search use <name>`, or pass --search." : "no search yet: `ojs search add <name>` first.");
+  return id;
+}
+
+/**
+ * Save titles to the active search. Each list given replaces that list;
+ * null empties it; lists not given stay as they are.
+ */
+export async function setTitles(input: string, env?: Env): Promise<TitlesView & { set: TitleList[]; cleared: TitleList[]; history?: number }> {
+  const person = activePerson(env);
+  const id = requireActiveSearch(env, person);
+  let raw: unknown;
+  try {
+    raw = parseYaml(input);
+  } catch (err) {
+    throw new PersonError(`--yaml isn't valid YAML: ${(err as Error).message.split("\n")[0]}`);
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new PersonError('--yaml must be a mapping, e.g. "{core: [Staff Engineer], exclude: [Junior]}"');
+  const given = raw as Record<string, unknown>;
+  const unknown = Object.keys(given).filter((k) => !(TITLE_LISTS as readonly string[]).includes(k));
+  if (unknown.length) throw new PersonError(`not a title list: ${unknown.join(", ")}. Lists: ${TITLE_LISTS.join(", ")}`);
+  const dir = join(searchesDir(env, person), id);
+  const path = join(dir, SEARCH_FILE);
+  const current = parseSearchYaml(await readFile(path, "utf8"), path);
+  const merged: Record<string, unknown> = { ...(current.titles ?? emptyTitles()) };
+  const set: TitleList[] = [];
+  const cleared: TitleList[] = [];
+  for (const k of TITLE_LISTS) {
+    if (!(k in given)) continue;
+    if (given[k] === null) {
+      merged[k] = [];
+      cleared.push(k);
+    } else {
+      merged[k] = given[k];
+      set.push(k);
+    }
+  }
+  const parsed = Titles.safeParse(merged);
+  if (!parsed.success) throw new PersonError(`those titles aren't valid, so nothing was saved:\n${parsed.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n")}`);
+  // Saved compactly: empty lists left out, plain related titles as strings.
+  const t = parsed.data;
+  const compact: Record<string, unknown> = {};
+  for (const k of TITLE_LISTS) {
+    if (!t[k].length) continue;
+    compact[k] = k === "related" ? t.related.map((r) => (r.why ? r : r.title)) : t[k];
+  }
+  const text = setTopLevelKey(await readFile(path, "utf8"), "titles", Object.keys(compact).length ? compact : null, { block: true, afterComment: "# titles:", beforeComment: "# fit:" });
+  const data = parseSearchYaml(text, path);
+  const history = await writeProfileText(dir, SEARCH_FILE, text, `titles: ${[...set, ...cleared.map((c) => `-${c}`)].join(", ")}`);
+  return { ...titlesView(id, data), set, cleared, ...(history ? { history } : {}) };
+}
+
+/** The active search's titles. */
+export async function titlesFor(env?: Env): Promise<TitlesView> {
+  const person = activePerson(env);
+  const id = requireActiveSearch(env, person);
+  return titlesView(id, await loadSearch(join(searchesDir(env, person), id)));
 }
 
 function activeSearchOrUndefined(env: Env | undefined, person: string): string | undefined {

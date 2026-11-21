@@ -22,6 +22,7 @@ Run `bun run ojs <command> --json` and read the JSON. If `node_modules/` is miss
 | `person migrate <name> --json` | A profile from before people existed (`data/profile/`): move it into that person's folders. Asked for by the error when it's needed |
 | `search --json` / `search add <name> [--role "…"] [--why "…"]` / `search use <name>` | Their searches; start one (switches to it); switch |
 | `search fit --json` / `search fit --level <good\|stretch\|leap> --evidence … --gap … [--note …]` | How well the profile backs this search, and whether the profile has changed since; save a new assessment |
+| `search titles --json` / `search titles --yaml '{core: […], related: […], open: [{title, if}], exclude: […]}' --json` | The job titles this search looks for (exact, related with why, open titles that don't show seniority with when they're worth a look, words that rule a title out); save them, each list replacing that list |
 | `search show --json` / `search correct --find … (--replace … \| --remove)` / `search history` / `search undo [n] [--yes]` | What this search looks for; change it; its changes; undo |
 | `prefs --json` / `prefs set --yaml '{…}' [--usual] --json` | What this search wants (its own preferences merged with their usual ones), with hard rules, priority weights, warnings and reasons still to ask; save preferences to this search, or with `--usual` to the ones every search falls back on. `null` clears one |
 | `prefs history [--usual]` / `prefs undo [n] [--usual] [--yes]` | Changes to preferences; undo |
@@ -51,7 +52,7 @@ open-job-search goes step by step, and each step is finished before the next one
 
 1. **Your experience:** their CV, then everything it left out, role by role.
 2. **Past lives:** other jobs they've had, and what those gave them.
-3. **Roles to aim for:** what they want to look for and why, how well their profile backs it (gently, and their choice always wins), and how many searches that makes.
+3. **Roles to aim for:** what they want to look for and why, how well their profile backs it (gently, and their choice always wins), how many searches that makes, and the job titles each one looks for.
 4. **What you want from the job:** for each search, where and how they work, pay, the kind of company, what rules a job out and what matters most, each with the reason why.
 
 More steps come later. Steps 1 and 2 are discovery: learn everything about them first. Step 3 turns that into searches. Steps 1 to 3 are done once per person; step 4 onwards is done per search, so a second search never repeats discovery. The person decides when a step is done (`ojs flow done <step>`); tell them the more they fill in, the better the roles we can find.
@@ -64,7 +65,7 @@ The workflows are skills in [`.agents/skills/`](.agents/skills/) (Claude Code se
 | [import-cv](.agents/skills/import-cv/SKILL.md) | Step 1, and whenever there are `new` or `changed` documents. Settles anything uncertain by asking before it writes |
 | [dig](.agents/skills/dig/SKILL.md) | Steps 1 and 2, or "dig", "interview me", "grill me". One question at a time until each role or past life has real depth |
 | [past-lives](.agents/skills/past-lives/SKILL.md) | Step 2. Explains why other jobs matter, finds them, sets them up |
-| [targets](.agents/skills/targets/SKILL.md) | Step 3, and any new search later. Roles they want and why, fit against the profile, one search or several |
+| [targets](.agents/skills/targets/SKILL.md) | Step 3, and any new search later. Roles they want and why, fit against the profile, one search or several, the titles to search for |
 | [preferences](.agents/skills/preferences/SKILL.md) | Step 4, for each search, and whenever their circumstances change. What they want from a job and why, pay, deal-breakers, priorities |
 
 In all of them: ask **one question per message**, in plain text, and show the exact lines before writing them.
@@ -73,7 +74,7 @@ In all of them: ask **one question per message**, in plain text, and show the ex
 
 `profile.yaml` holds what's true of them whatever they apply for: details, languages, education, eligibility (right to work, visa limits, clearance, notice period). When they tell you something, change it with `profile correct profile --find … --replace …`, keeping its comments and changing only what they told you.
 
-What they're looking for belongs to a search, in `search.yaml`: target roles and why (change them with `search correct`), and preferences (change them with `prefs set`). Preferences true for all their searches live in `data/<person>/preferences.yaml` (`prefs set --usual`); a search sets only what's different. Different searches can want different things: a different salary, different priorities.
+What they're looking for belongs to a search, in `search.yaml`: target roles and why (change them with `search correct`), the titles to search for (`search titles`; a title is one clue to seniority, not the test), and preferences (change them with `prefs set`). Preferences true for all their searches live in `data/<person>/preferences.yaml` (`prefs set --usual`); a search sets only what's different. Different searches can want different things: a different salary, different priorities.
 
 Role and past-life files: add through `add-bullets`; change or remove only through `profile correct`, and only when they ask. Never edit profile files directly: the tools log every change in `history.md` so it can be undone, and direct edits skip that.
 

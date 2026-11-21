@@ -15,7 +15,7 @@ What open-job-search builds. Everything in this folder except this README is ign
   - `preferences.yaml`: their usual preferences, true for all their searches (`ojs prefs --usual`), with `history.md` beside it
   - `flow.json`: which steps are done
   - `searches/<search>/`: one folder per job search ("software engineering", "product management")
-    - `search.yaml`: what this search is looking for: roles and why, how well the profile backs them, preferences that differ from the usual ones (pay, priorities, deal-breakers…), and the angle to lead with
+    - `search.yaml`: what this search is looking for: roles and why, the job titles to search for, how well the profile backs them, preferences that differ from the usual ones (pay, priorities, deal-breakers…), and the angle to lead with
     - `flow.json`: which of the per-search steps are done
     - `history.md`: every change to it
     - later: the jobs found and applications made for it

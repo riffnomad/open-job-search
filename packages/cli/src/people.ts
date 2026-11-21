@@ -20,7 +20,10 @@ import {
   searchDir,
   searchesDir,
   setFit,
+  setTitles,
+  titlesFor,
   usePerson,
+  type TitlesView,
   useSearch,
 } from "@ojs/core";
 import { entryText } from "./profile.ts";
@@ -38,6 +41,10 @@ Searches (one person can look for more than one kind of job):
   search add <name>           Start a search ("Software engineering") and switch to it [--role "…" …] [--why "…" …]
   search fit                  How well the profile backs this search, and whether it's out of date
   search fit --level <l>      Save it: good | stretch | leap, [--evidence "…" …] [--gap "…" …] [--note "…"]
+  search titles               The job titles to search for: core, related, open (flat titles worth
+                              a look if a condition holds), and words that rule a title out
+  search titles --yaml "<y>"  Save them: each list given replaces that list, null empties it, e.g.
+                              --yaml "{core: [Staff Engineer], open: [{title: Member of Technical Staff, if: pay at or above target}]}"
   search use <name>           Switch to another search
   search show                 What this search is looking for
   search correct              Change search.yaml: --find "exact text" (--replace "new" | --remove) [--dry-run]
@@ -45,6 +52,19 @@ Searches (one person can look for more than one kind of job):
 
   --person <name> / --search <name> work on any command, for that command only.
 `;
+
+function titlesText(v: TitlesView): string {
+  if (v.empty) return `No titles yet${v.targetRoles.length ? ` (target roles: ${v.targetRoles.join(", ")})` : ""}. \`ojs search titles --yaml …\`.`;
+  const t = v.titles;
+  const lines: string[] = [];
+  if (t.core.length) lines.push(`Core: ${t.core.join(", ")}`);
+  if (t.related.length) lines.push("Related:", ...t.related.map((r) => `  ${r.title}${r.why ? ` (${r.why})` : ""}`));
+  if (t.open.length) lines.push("Open, if:", ...t.open.map((o) => `  ${o.title}: if ${o.if}${o.why ? ` (${o.why})` : ""}`));
+  if (t.exclude.length) lines.push(`Rules a title out: ${t.exclude.join(", ")}`);
+  if (v.warnings.length) lines.push("", "To check:", ...v.warnings.map((w) => `  ! ${w}`));
+  if (v.unexplained.length) lines.push("", `No reason yet: ${v.unexplained.join(", ")}`);
+  return lines.join("\n");
+}
 
 export interface WorkingOn {
   person: { id: string; name: string };
@@ -102,6 +122,7 @@ interface Flags {
   evidence?: string[];
   gap?: string[];
   note?: string;
+  yaml?: string;
   find?: string;
   replace?: string;
   remove?: boolean;
@@ -184,6 +205,15 @@ export async function searchCommand(rest: string[], f: Flags, out: Out): Promise
             ...(c.fit.note ? [`  ${c.fit.note}`] : []),
           ].join("\n");
       return out(human, { search: c.id, fit: c.fit ?? null, changesSince: c.changesSince, needsAssessing: c.needsAssessing });
+    }
+    case "titles": {
+      if (f.yaml) {
+        const r = await setTitles(f.yaml);
+        const changed = [...r.set, ...r.cleared.map((c) => `${c} (emptied)`)].join(", ");
+        return out(`${r.history ? "Saved" : "No change to"} titles: ${changed}.\n\n${titlesText(r)}`, r);
+      }
+      const v = await titlesFor();
+      return out(titlesText(v), v);
     }
     case "show": {
       const dir = searchDir(undefined, person);

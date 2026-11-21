@@ -14,6 +14,7 @@ import { z } from "zod";
 import { SEARCH_FILE } from "./paths.ts";
 import { preferencesTemplateBody, preferenceShape, USUAL_PREFERENCES_FILE, UsualPreferences } from "./preferences.ts";
 import { dropNulls, ProfileFileError } from "./profile/role-file.ts";
+import { Titles } from "./titles.ts";
 
 export const FIT_LEVELS = ["good", "stretch", "leap"] as const;
 export type FitLevel = (typeof FIT_LEVELS)[number];
@@ -45,6 +46,8 @@ export const SearchData = z.object({
   targetRoles: z.array(z.string()).default([]),
   /** Why they want this, in their words. */
   why: z.array(z.string()).default([]),
+  /** The titles to search for, built from targetRoles in step 3 (titles.ts). */
+  titles: Titles.optional(),
   fit: Fit.optional(),
   // Preferences: only what differs from the person's usual ones (preferences.ts).
   ...preferenceShape,
@@ -110,6 +113,7 @@ name: ${yamlString(name)}
 
 targetRoles: ${targetRoles.length ? `[${targetRoles.map(yamlString).join(", ")}]` : "[]"}${targetRoles.length ? "" : "   # e.g. [Backend engineer, Platform engineer]"}
 why:${why.length ? `\n${why.map((w) => `  - ${yamlString(w)}`).join("\n")}` : " []               # why they want this, in their words"}
+# titles: set with \`ojs search titles\`: the job titles to search for
 # fit: set with \`ojs search fit\`: how well the profile backs this search
 
 # What this search wants. Leave a preference empty to use your usual one

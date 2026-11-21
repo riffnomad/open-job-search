@@ -252,6 +252,8 @@ export interface SetKeyOptions {
   before?: string;
   /** Or straight after the first comment line starting with this text ("# fit:"). */
   afterComment?: string;
+  /** Or just before the first comment line starting with this text. */
+  beforeComment?: string;
   /** Write the value as an indented block rather than on one line (for long values). */
   block?: boolean;
 }
@@ -275,6 +277,7 @@ export function setTopLevelKey(text: string, key: string, value: unknown, opts: 
       const c = lines.findIndex((l) => l.startsWith(opts.afterComment!));
       if (c >= 0) at = c + 1;
     }
+    if (at < 0 && opts.beforeComment) at = lines.findIndex((l) => l.startsWith(opts.beforeComment!));
     if (at < 0) at = text.endsWith("\n") ? lines.length - 1 : lines.length;
     lines.splice(at, 0, rendered);
     return lines.join("\n");
