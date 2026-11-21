@@ -34,7 +34,13 @@ import {
   renderProfileFile,
   resolveEntry,
   sectionBullets,
-  snapshot,
+  readProfileText,
+  recordChange,
+  correctProfile,
+  planUndo,
+  applyUndo,
+  readHistory,
+  type HistoryEntry,
   type Profile,
   type ProfileEntry,
   type Source,
@@ -61,6 +67,10 @@ export interface ProfileFlags {
   source?: string;
   text?: string[];
   "dry-run"?: boolean;
+  find?: string;
+  replace?: string;
+  remove?: boolean;
+  limit?: string;
 }
 
 type Out = (human: string, data: unknown) => void;
@@ -73,6 +83,10 @@ export const PROFILE_HELP = `Profile commands:
   profile add-bullets <role>  Append to a role: --section <heading> [--sub <project>] [--as <position>] --source <s> --text "..." [--text ...] [--dry-run]
                               sources: cv | linkedin | dig | you | inferred (inferred only under "To confirm")
   profile edit [role]         Open in $EDITOR (no role: profile.yaml), then check it
+  profile correct <role|profile> --find "exact text" (--replace "new text" | --remove) [--dry-run]
+                              Change or remove something that's wrong. --remove deletes the whole line
+  profile history [role] [--limit n]   Every change to your profile, newest first
+  profile undo [n] [--yes]    Reverse the latest change (or change #n). Shows it first; writes with --yes
   profile import [file]       Seed role files from a CV (PDF, DOCX, MD, TXT) using your AI provider.
                               No file: imports new or changed files in documents/
                               --paste (CV text on stdin)  --dry-run (preview only)  -y, --yes (write without asking)
@@ -241,6 +255,48 @@ async function addBulletsCmd(ref: string | undefined, f: ProfileFlags, out: Out)
   out(`${res.written ? "Added to" : "Would add to"} ${where}:\n${res.lines.map((l) => `  ${l}`).join("\n")}`, res);
 }
 
+async function correctCmd(ref: string | undefined, f: ProfileFlags, out: Out): Promise<void> {
+  if (!ref) throw new ProfileError('usage: ojs profile correct <role|profile> --find "exact text" (--replace "new text" | --remove)');
+  const res = await correctProfile(ref, {
+    find: f.find ?? "",
+    ...(f.replace !== undefined ? { replace: f.replace } : {}),
+    remove: Boolean(f.remove),
+    dryRun: Boolean(f["dry-run"]),
+  });
+  const show = (ls: string[], mark: string) => (ls.length ? ls.map((l) => `  ${mark} ${l}`).join("\n") : `  ${mark} (line removed)`);
+  out(`${res.written ? "Changed" : "Would change"} ${res.file}:\n${show(res.before, "-")}\n${show(res.after, "+")}`, res);
+}
+
+function entryText(e: HistoryEntry): string {
+  const changed = e.hunks.flatMap((h) => h.lines.filter((l) => l.op !== " ").map((l) => `    ${l.op} ${l.text}`));
+  const more = changed.length > 6 ? [`    … ${changed.length - 6} more line${changed.length - 6 === 1 ? "" : "s"}`] : [];
+  return [`#${e.n}  ${e.when}  ${e.action}  ${e.file}${e.created ? " (new file)" : e.deleted ? " (deleted)" : ""}`, ...changed.slice(0, 6), ...more].join("\n");
+}
+
+async function historyCmd(ref: string | undefined, f: ProfileFlags, out: Out): Promise<void> {
+  const dir = profileDir();
+  let entries = await readHistory(dir);
+  if (ref) {
+    const rel = /^profile(\.ya?ml)?$/i.test(ref) ? PROFILE_FILE : await findEntryFile(ref, dir);
+    entries = entries.filter((e) => e.file === rel);
+  }
+  const limit = f.limit ? Math.max(1, Number(f.limit) || 20) : 20;
+  const shown = entries.slice(-limit).reverse();
+  out(shown.length ? shown.map(entryText).join("\n\n") : "No changes yet.", { entries: shown, total: entries.length });
+}
+
+async function undoCmd(arg: string | undefined, f: ProfileFlags, out: Out): Promise<void> {
+  const n = arg ? Number(arg.replace(/^#/, "")) : undefined;
+  if (arg && !Number.isInteger(n)) throw new ProfileError("usage: ojs profile undo [n] [--yes]");
+  const plan = await planUndo(profileDir(), n);
+  const what = plan.text === null ? `remove ${plan.entry.file}, which it created` : `put ${plan.entry.file} back as it was before`;
+  if (!f.yes) {
+    return out(`Undoing #${plan.entry.n} would ${what}:\n\n${entryText(plan.entry)}\n\nRun again with --yes to undo it.`, { undo: plan.entry.n, file: plan.entry.file, removesFile: plan.text === null, written: false });
+  }
+  const done = await applyUndo(plan);
+  out(`Undid #${plan.entry.n} (${plan.entry.action}, ${plan.entry.file}). Logged as #${done}.`, { undo: plan.entry.n, file: plan.entry.file, removesFile: plan.text === null, written: true, history: done });
+}
+
 async function edit(ref: string | undefined, f: ProfileFlags, out: Out): Promise<void> {
   if (f.json) throw new ProfileError("edit opens your editor, so it has no --json form. Use add-bullets to write from scripts.");
   const dir = profileDir();
@@ -248,18 +304,19 @@ async function edit(ref: string | undefined, f: ProfileFlags, out: Out): Promise
   if (ref) rel = await findEntryFile(ref, dir);
   else await ensureProfileYaml(dir);
 
-  const snap = await snapshot(dir, rel);
+  const before = await readProfileText(dir, rel);
   const editor = process.env.VISUAL || process.env.EDITOR || "vi";
   const [cmd, ...args] = editor.split(/\s+/);
   const result = spawnSync(cmd!, [...args, join(dir, rel)], { stdio: "inherit" });
   if (result.error) throw new ProfileError(`couldn't start your editor (${editor}): ${result.error.message}. Set $EDITOR.`);
+  const n = await recordChange(dir, rel, before, await readProfileText(dir, rel), "edit");
+  if (n === undefined) return out(`No changes to ${rel}.`, { file: rel, ok: true, changed: false });
 
   try {
     await loadProfile(dir);
-    out(`Saved ${rel}. It checks out.`, { file: rel, ok: true });
+    out(`Saved ${rel}. It checks out. (History #${n})`, { file: rel, ok: true, changed: true, history: n });
   } catch (err) {
-    const restore = snap ? `\nYour previous version is saved at ${snap}` : "";
-    throw new ProfileError(`${(err as Error).message}\n\nFix it with \`ojs profile edit${ref ? ` ${ref}` : ""}\`.${restore}`);
+    throw new ProfileError(`${(err as Error).message}\n\nFix it with \`ojs profile edit${ref ? ` ${ref}` : ""}\`, or put it back with \`ojs profile undo --yes\`.`);
   }
 }
 
@@ -361,7 +418,7 @@ async function importOne(
     return { human: `${summary}\n\nNothing written yet. Run again with --yes to write (the AI result is cached, so it's instant).`, data: data(false) };
   }
 
-  await applyImport(dir, plan);
+  await applyImport(dir, plan, src.label);
   const rel = await recordSource(src);
   const where = "path" in src.ref && rel !== basename(src.ref.path) ? ` Saved a copy as documents/${rel}.` : "path" in src.ref ? "" : ` Saved the text as documents/${rel}.`;
   return { human: `${shown ? "" : summary + "\n\n"}Written.${where}`, data: data(true, { document: rel }) };
@@ -465,6 +522,12 @@ export async function profileCommand(rest: string[], f: ProfileFlags, out: Out):
       return addBulletsCmd(args[0], f, out);
     case "edit":
       return edit(args[0], f, out);
+    case "correct":
+      return correctCmd(args[0], f, out);
+    case "history":
+      return historyCmd(args[0], f, out);
+    case "undo":
+      return undoCmd(args[0], f, out);
     case "import":
       return importCmd(args[0], f, out);
     case "text":

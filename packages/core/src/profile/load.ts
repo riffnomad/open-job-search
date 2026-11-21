@@ -9,7 +9,6 @@ import { ProfileData } from "./schema.ts";
 export const PROFILE_FILE = "profile.yaml";
 export const ROLES_DIR = "roles";
 export const PAST_LIVES_DIR = "past-lives";
-export const HISTORY_DIR = "history";
 
 export interface Profile {
   dir: string;

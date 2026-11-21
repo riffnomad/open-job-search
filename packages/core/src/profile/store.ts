@@ -1,17 +1,17 @@
 /**
  * Writing the profile. Every change goes through here:
  * - directories 0700, files 0600 (it's personal data)
- * - a snapshot in history/ before any existing file changes
+ * - every change logged as a diff in history.md, so it can be undone
  * - atomic writes (temp file + rename), so a crash never leaves half a file
  * - the result is parsed again before it's written, so the tool can never
  *   save a file it couldn't read back
  */
-import { access, copyFile, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { profileDir } from "../paths.ts";
 import {
-  HISTORY_DIR,
   loadProfile,
+  parseProfileYaml,
   PAST_LIVES_DIR,
   PROFILE_FILE,
   ROLES_DIR,
@@ -34,12 +34,13 @@ import {
   type RoleFile,
   type Source,
 } from "./role-file.ts";
+import { readHistory, recordChange, reverseEntry, undoTarget, type HistoryEntry } from "./history.ts";
 
 export class ProfileError extends Error {
   override name = "ProfileError";
 }
 
-const DIRS = [ROLES_DIR, PAST_LIVES_DIR, HISTORY_DIR];
+const DIRS = [ROLES_DIR, PAST_LIVES_DIR];
 
 export async function ensureProfileDirs(dir = profileDir()): Promise<void> {
   await mkdir(dir, { recursive: true, mode: 0o700 });
@@ -55,26 +56,30 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-/** Copy a file into history/ before it changes. Returns the snapshot path, or undefined if there was nothing to keep. */
-export async function snapshot(dir: string, rel: string, now = new Date()): Promise<string | undefined> {
-  const src = join(dir, rel);
-  if (!(await exists(src))) return undefined;
-  await mkdir(join(dir, HISTORY_DIR), { recursive: true, mode: 0o700 });
-  const stamp = now.toISOString().replace(/[:.]/g, "-");
-  const dest = join(dir, HISTORY_DIR, `${stamp}__${rel.replace(/[\\/]/g, "__")}`);
-  await copyFile(src, dest);
-  return dest;
+async function readOrNull(path: string): Promise<string | null> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw err;
+  }
 }
 
-/** Snapshot (if the file exists), then write atomically with mode 0600. */
-export async function writeProfileText(dir: string, rel: string, text: string): Promise<void> {
+/**
+ * Write atomically with mode 0600, then log the change in history.md.
+ * `action` is what the history shows: "dig", "import", "correct", "edit"...
+ * Returns the history entry number, or undefined if nothing changed.
+ */
+export async function writeProfileText(dir: string, rel: string, text: string, action: string): Promise<number | undefined> {
   await ensureProfileDirs(dir);
-  await snapshot(dir, rel);
   const path = join(dir, rel);
+  const before = await readOrNull(path);
+  if (before === text) return undefined;
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const tmp = join(dirname(path), `.${basename(path)}.tmp-${process.pid}`);
   await writeFile(tmp, text, { mode: 0o600 });
   await rename(tmp, path);
+  return recordChange(dir, rel, before, text, action);
 }
 
 export type ProfileEntry =
@@ -129,7 +134,7 @@ export async function createEntry(
     text = renderProfileFile(newProfileFile("past-life", parsed.data));
   }
   if (await exists(join(dir, file))) throw new ProfileError(`${file} already exists. Add to it with \`ojs profile add-bullets\` or \`ojs profile edit\`.`);
-  await writeProfileText(dir, file, text);
+  await writeProfileText(dir, file, text, "create");
   return { file, text };
 }
 
@@ -198,7 +203,7 @@ export async function addBullets(ref: string, opts: AddBulletsOptions, dir = pro
     written: false,
   };
   if (opts.dryRun) return result;
-  await writeProfileText(dir, entry.file, text);
+  await writeProfileText(dir, entry.file, text, opts.source.kind === "dig" ? "dig" : `add (${opts.source.kind})`);
   return { ...result, written: true };
 }
 
@@ -271,7 +276,100 @@ export async function findEntryFile(ref: string, dir = profileDir()): Promise<st
   throw new ProfileError(`no role or past life file matches "${ref}". Files:\n${files.map((f) => `  ${f}`).join("\n") || "  (none yet)"}`);
 }
 
-/** Read a file the user is about to edit by hand, for snapshot + validation around the edit. */
+/** Read a file the user is about to edit by hand, so the edit can be logged and checked. */
 export async function readProfileText(dir: string, rel: string): Promise<string> {
   return readFile(join(dir, rel), "utf8");
+}
+
+/** Check a profile file's text parses, by what kind of file it is. Throws with the problem. */
+export function checkProfileText(rel: string, text: string): void {
+  if (rel === PROFILE_FILE) parseProfileYaml(text, rel);
+  else if (rel.startsWith(`${ROLES_DIR}/`)) parseProfileFile("role", text, rel);
+  else if (rel.startsWith(`${PAST_LIVES_DIR}/`)) parseProfileFile("past-life", text, rel);
+  else throw new ProfileError(`${rel} isn't a profile file`);
+}
+
+export interface CorrectOptions {
+  /** Exact text to find; must occur once. */
+  find: string;
+  /** Replacement. Ignored with `remove`. */
+  replace?: string;
+  /** Remove the whole line that contains `find`. */
+  remove?: boolean;
+  dryRun?: boolean;
+}
+
+export interface CorrectResult {
+  file: string;
+  before: string[];
+  after: string[];
+  written: boolean;
+}
+
+/**
+ * Change or remove something the person says is wrong. The only way to change
+ * existing lines (add-bullets only appends). Logged as "correct".
+ * `ref` is a role or past life, or "profile" / "profile.yaml".
+ */
+export async function correctProfile(ref: string, opts: CorrectOptions, dir = profileDir()): Promise<CorrectResult> {
+  const rel = /^profile(\.ya?ml)?$/i.test(ref) ? PROFILE_FILE : await findEntryFile(ref, dir);
+  const text = await readOrNull(join(dir, rel));
+  if (text === null) throw new ProfileError(`${rel} doesn't exist yet`);
+  if (!opts.find) throw new ProfileError("--find is required: the exact text to change");
+  const count = text.split(opts.find).length - 1;
+  if (count === 0) throw new ProfileError(`"${opts.find}" isn't in ${rel}. Copy the text exactly, including punctuation.`);
+  if (count > 1) throw new ProfileError(`"${opts.find}" appears ${count} times in ${rel}. Give more of the line so it matches once.`);
+  if (!opts.remove && opts.replace === undefined) throw new ProfileError("give --replace \"new text\", or --remove to delete the whole line");
+
+  const lines = text.split("\n");
+  const i = lines.findIndex((l) => l.includes(opts.find));
+  let next: string;
+  let after: string[];
+  if (opts.remove) {
+    if (opts.find.includes("\n")) throw new ProfileError("--remove works on one line: --find text from within that line");
+    next = [...lines.slice(0, i), ...lines.slice(i + 1)].join("\n");
+    after = [];
+  } else {
+    next = text.replace(opts.find, () => opts.replace!);
+    after = next.split("\n").slice(i, i + opts.replace!.split("\n").length);
+  }
+  try {
+    checkProfileText(rel, next);
+  } catch (err) {
+    throw new ProfileError(`that change would break ${rel}, so nothing was changed: ${(err as Error).message}`);
+  }
+  const result: CorrectResult = { file: rel, before: lines.slice(i, i + opts.find.split("\n").length), after, written: false };
+  if (opts.dryRun) return result;
+  await writeProfileText(dir, rel, next, "correct");
+  return { ...result, written: true };
+}
+
+export interface UndoPlan {
+  entry: HistoryEntry;
+  /** The file's text after the undo; null means the file will be removed. */
+  text: string | null;
+}
+
+/** Work out how to reverse the latest change (or change #n), without writing. */
+export async function planUndo(dir = profileDir(), n?: number): Promise<UndoPlan> {
+  const entry = undoTarget(await readHistory(dir), n);
+  const current = await readOrNull(join(dir, entry.file));
+  const text = reverseEntry(entry, current);
+  if (text !== null) {
+    try {
+      checkProfileText(entry.file, text);
+    } catch (err) {
+      throw new ProfileError(`undoing #${entry.n} would leave ${entry.file} broken: ${(err as Error).message}`);
+    }
+  }
+  return { entry, text };
+}
+
+export async function applyUndo(plan: UndoPlan, dir = profileDir()): Promise<number | undefined> {
+  const action = `undo #${plan.entry.n}`;
+  if (plan.text !== null) return writeProfileText(dir, plan.entry.file, plan.text, action);
+  const path = join(dir, plan.entry.file);
+  const before = await readFile(path, "utf8");
+  await unlink(path);
+  return recordChange(dir, plan.entry.file, before, null, action);
 }

@@ -14,6 +14,7 @@ import {
   ProfileLoadError,
   ProviderConfig,
   ProviderError,
+  UndoError,
   resolveProvider,
   saveConfig,
   which,
@@ -77,6 +78,10 @@ const { values, positionals } = parseArgs({
     section: { type: "string" },
     sub: { type: "string" },
     as: { type: "string" },
+    find: { type: "string" },
+    replace: { type: "string" },
+    remove: { type: "boolean", default: false },
+    limit: { type: "string" },
     source: { type: "string" },
     text: { type: "string", multiple: true },
     "dry-run": { type: "boolean", default: false },
@@ -224,7 +229,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  const known = [ConfigError, ProviderError, ProfileError, ProfileFileError, ProfileLoadError, ExtractError].some((E) => err instanceof E);
+  const known = [ConfigError, ProviderError, ProfileError, ProfileFileError, ProfileLoadError, ExtractError, UndoError].some((E) => err instanceof E);
   const message = known ? (err as Error).message : String((err as Error)?.stack ?? err);
   if (values.json) console.log(JSON.stringify({ error: message }));
   else console.error(`ojs: ${message}`);

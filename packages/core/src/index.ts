@@ -6,6 +6,7 @@ export * from "./profile/role-file.ts";
 export * from "./profile/schema.ts";
 export * from "./profile/load.ts";
 export * from "./profile/store.ts";
+export * from "./profile/history.ts";
 export * from "./profile/gaps.ts";
 export * from "./profile/extract.ts";
 export * from "./profile/dates.ts";

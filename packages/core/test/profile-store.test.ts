@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { findGaps, skillShown } from "../src/profile/gaps.ts";
 import { loadProfile, parseProfileYaml } from "../src/profile/load.ts";
 import { newProfileFile, parseProfileFile } from "../src/profile/role-file.ts";
+import { readHistory } from "../src/profile/history.ts";
 import { addBullets, createEntry, ensureProfileYaml, findEntryFile, PROFILE_YAML_TEMPLATE, ProfileError, resolveEntry } from "../src/profile/store.ts";
 
 const fixtures = join(import.meta.dir, "fixtures");
@@ -27,7 +28,8 @@ describe("createEntry", () => {
     expect(file).toBe("roles/2015-04-northwind-ltd.md");
     expect(await mode(join(dir, file))).toBe(0o600);
     expect(await mode(dir)).toBe(0o700);
-    expect(await mode(join(dir, "history"))).toBe(0o700);
+    expect(await mode(join(dir, "history.md"))).toBe(0o600);
+    expect((await readHistory(dir)).map((e) => [e.n, e.action, e.file, e.created])).toEqual([[1, "create", file, true]]);
     const doc = parseProfileFile("role", await readFile(join(dir, file), "utf8"));
     expect(doc.sections).toHaveLength(10);
   });
@@ -48,7 +50,7 @@ describe("addBullets", () => {
     return dir;
   }
 
-  test("appends, snapshots the old version, and keeps the file private", async () => {
+  test("appends, logs the change in history.md, and keeps the file private", async () => {
     const dir = await withAcme();
     const before = await readFile(join(dir, "roles/2019-06-acme-logistics.md"), "utf8");
     const res = await addBullets("acme", { section: "Projects", subheading: "Depot dashboard", texts: ["Used daily by 40 depot managers."], source: dig }, dir);
@@ -63,10 +65,10 @@ describe("addBullets", () => {
     expect(after).toContain("- Built the first dashboard for depot managers. [cv]\n- Used daily by 40 depot managers. [dig 2026-11-22]\n");
     expect(after.replace("- Used daily by 40 depot managers. [dig 2026-11-22]\n", "")).toBe(before);
     expect(await mode(join(dir, res.file))).toBe(0o600);
-    const history = await readdir(join(dir, "history"));
-    expect(history).toHaveLength(1);
-    expect(history[0]).toEndWith("__roles__2019-06-acme-logistics.md");
-    expect(await readFile(join(dir, "history", history[0]!), "utf8")).toBe(before);
+    const [entry, ...rest] = await readHistory(dir);
+    expect(rest).toEqual([]);
+    expect(entry).toMatchObject({ n: 1, action: "dig", file: res.file, created: false });
+    expect(entry!.hunks.flatMap((h) => h.lines.filter((l) => l.op !== " "))).toEqual([{ op: "+", text: "- Used daily by 40 depot managers. [dig 2026-11-22]" }]);
     expect((await readdir(join(dir, "roles"))).filter((f) => f.includes(".tmp-"))).toEqual([]);
   });
 
@@ -77,7 +79,7 @@ describe("addBullets", () => {
     expect(res.written).toBe(false);
     expect(res.lines).toEqual(["- A story. [you]"]);
     expect(await readFile(join(dir, "roles/2019-06-acme-logistics.md"), "utf8")).toBe(before);
-    await expect(readdir(join(dir, "history"))).rejects.toThrow();
+    expect(await readHistory(dir)).toEqual([]);
   });
 
   test("guesses can only go under To confirm", async () => {

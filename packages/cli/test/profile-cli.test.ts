@@ -156,3 +156,22 @@ describe("agent tools: text, schema, import --extracted", () => {
     expect(bad.json.error).toMatch(/doesn't match the schema[\s\S]*roles\.0\.positions/);
   });
 });
+
+describe("correct, history, undo --json", () => {
+  test("correct a line, see it in history, undo it (preview first)", () => {
+    ojs("profile", "add", "role", "--employer", "Initech", "--title", "Analyst", "--start", "2012");
+    ojs("profile", "add-bullets", "initech", "--section", "Achievements", "--source", "cv", "--text", "Recovered $1M.");
+    const fixed = ojs("profile", "correct", "initech", "--find", "Recovered $1M.", "--replace", "Found $1M lost to a bug.");
+    expect(fixed.json).toEqual({ file: "roles/2012-initech.md", before: ["- Recovered $1M. [cv]"], after: ["- Found $1M lost to a bug. [cv]"], written: true });
+
+    const hist = ojs("profile", "history", "initech").json;
+    expect(hist.entries.map((e: { action: string }) => e.action)).toEqual(["correct", "add (cv)", "create"]);
+
+    const preview = ojs("profile", "undo").json;
+    expect(preview).toMatchObject({ undo: hist.entries[0].n, file: "roles/2012-initech.md", written: false });
+    const done = ojs("profile", "undo", "--yes").json;
+    expect(done).toMatchObject({ undo: hist.entries[0].n, written: true });
+    expect(ojs("profile", "show", "initech").json.sections.find((s: { heading: string }) => s.heading === "Achievements").bullets[0].text).toBe("Recovered $1M.");
+    expect(ojs("profile", "undo", String(hist.entries[0].n)).json.error).toMatch(/already been undone/);
+  });
+});

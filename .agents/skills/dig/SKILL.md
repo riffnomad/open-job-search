@@ -16,7 +16,7 @@ Follow the **Facts, not polish** rules in [AGENTS.md](../../../AGENTS.md) throug
 
 ## 2. Clear "To confirm" first
 
-For each bullet under **To confirm**, ask whether it's right, one per message. Yes: add it as a fact under the right heading with `--source dig`. No: tell them you'll remove it, and on their OK delete that one line from the file, changing nothing else. Unsure: leave it.
+For each bullet under **To confirm**, ask whether it's right, one per message. Yes: add it as a fact under the right heading with `--source dig`. No: tell them you'll remove it, and on their OK run `bun run ojs profile correct <role> --find "<the line's text>" --remove --json`. Unsure: leave it.
 
 ## 3. Grill, one question at a time
 
@@ -51,6 +51,8 @@ After every answer, or every two or three short ones:
    If the role has several positions and it's not obvious which one an answer is about, ask, and pass it with `--as`.
 
 Never lose an answer: write before moving to the next role or stopping.
+
+If they correct something already in the file (a wrong number, a word they wouldn't use, a CV line that isn't true), show the before and after, then use `bun run ojs profile correct <role> --find "…" --replace "…" --json`. If they change their mind about something you just wrote, `profile undo` reverses it.
 
 ## 5. Move on or stop
 

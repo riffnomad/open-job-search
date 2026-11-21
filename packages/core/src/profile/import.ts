@@ -5,7 +5,7 @@
  * 2. planImport: no AI, no writes. Decides which role files to create or
  *    add to, skipping bullets already there, and what to fill in
  *    profile.yaml. This is what the user sees before anything changes.
- * 3. applyImport: writes the plan (snapshots, 0600, validated).
+ * 3. applyImport: writes the plan (logged in history.md, 0600, validated).
  */
 import { createHash } from "node:crypto";
 import { access, chmod, copyFile, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -373,9 +373,10 @@ function planProfileYaml(profile: Profile, ex: ExtractedCv, existingText?: strin
   return { text: doc.toString(), filled };
 }
 
-export async function applyImport(dir: string, plan: ImportPlan): Promise<void> {
-  for (const f of plan.files) await writeProfileText(dir, f.file, f.text);
-  if (plan.profileYaml) await writeProfileText(dir, PROFILE_FILE, plan.profileYaml.text);
+export async function applyImport(dir: string, plan: ImportPlan, label?: string): Promise<void> {
+  const action = label ? `import ${label}` : "import";
+  for (const f of plan.files) await writeProfileText(dir, f.file, f.text, action);
+  if (plan.profileYaml) await writeProfileText(dir, PROFILE_FILE, plan.profileYaml.text, action);
 }
 
 // ---------------------------------------------------------------------------
