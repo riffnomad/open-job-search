@@ -21,7 +21,7 @@ describe("flow", () => {
     const ws = await workspace();
     const s = await flowStatus(ws);
     expect(s.current).toBe("experience");
-    expect(s.steps.map((x) => [x.id, x.state])).toEqual([["experience", "current"], ["past-lives", "locked"]]);
+    expect(s.steps.map((x) => [x.id, x.state])).toEqual([["experience", "current"], ["past-lives", "locked"], ["targets", "locked"]]);
     expect(s.steps[0]!.blockers).toEqual(["No roles yet: import a CV or add a role first."]);
     await expect(markStepDone("experience", ws)).rejects.toThrow(/No roles yet/);
     await expect(markStepDone("past-lives", ws)).rejects.toThrow(/Step 1 comes first/);
@@ -52,10 +52,31 @@ describe("flow", () => {
 
     // No past lives is fine: the person decides.
     const after2 = await markStepDone("past-lives", ws);
-    expect(after2.complete).toBe(true);
-    expect(after2.current).toBeUndefined();
+    expect(after2.current).toBe("targets");
 
-    expect(await reopenStep("experience", ws)).toEqual(["experience", "past-lives"]);
+    // Step 3 needs a search; fit is suggested, and flagged again once the profile moves on.
+    const targets = after2.steps[2]!;
+    expect(targets.progress).toEqual(["No searches yet"]);
+    expect(targets.blockers).toEqual(["No searches yet: decide what to look for first."]);
+    await mkdir(join(ws.person, "searches", "eng"), { recursive: true });
+    await writeFile(join(ws.person, "searches", "eng", "search.yaml"), "name: Engineering\ntargetRoles: [Engineer]\nwhy: [Loves it]\nfit: { level: good, assessedAt: 2026-11-21, profileChange: 1 }\n");
+    await mkdir(join(ws.person, "searches", "mgmt"), { recursive: true });
+    await writeFile(join(ws.person, "searches", "mgmt", "search.yaml"), "name: Management\n");
+    const s3 = (await flowStatus(ws)).steps[2]!;
+    expect(s3.progress).toEqual(["2 searches: Engineering, Management"]);
+    expect(s3.suggestions).toEqual(['Add target roles to "Management"', 'Ask why they want "Management"', 'Assess how well the profile backs "Management"']);
+    await addBullets("acme", { section: "Stories", texts: ["Another story."], source: { kind: "dig", date: "2026-11-21" } }, ws.profile);
+    expect((await flowStatus(ws)).steps[2]!.suggestions).toEqual([
+      '"Engineering": the profile has 1 change since its fit was assessed; check it again',
+      'Add target roles to "Management"',
+      'Ask why they want "Management"',
+      'Assess how well the profile backs "Management"',
+    ]);
+    const after3 = await markStepDone("targets", ws);
+    expect(after3.complete).toBe(true);
+    expect(after3.current).toBeUndefined();
+
+    expect(await reopenStep("experience", ws)).toEqual(["experience", "past-lives", "targets"]);
     expect((await flowStatus(ws)).current).toBe("experience");
     await expect(markStepDone("nope", ws)).rejects.toThrow(FlowError);
   });

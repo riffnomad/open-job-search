@@ -19,6 +19,7 @@ import {
   personIds,
   readActive,
   SEARCH_FILE,
+  SEARCHES_DIR,
   searchesDir,
   searchIds,
   type ActiveState,
@@ -26,7 +27,8 @@ import {
 import { slugify } from "./profile/role-file.ts";
 import { ensureProfileDirs, writeProfileText } from "./profile/store.ts";
 import { PROFILE_FILE } from "./profile/load.ts";
-import { loadSearch, searchYamlTemplate, type SearchData } from "./search.ts";
+import { readHistory } from "./profile/history.ts";
+import { FIT_LEVELS, fitStatus, loadSearch, parseSearchYaml, searchYamlTemplate, type FitLevel, type FitStatus, type SearchData } from "./search.ts";
 
 type Env = Record<string, string | undefined>;
 
@@ -43,6 +45,19 @@ export interface SearchInfo {
   name: string;
   targetRoles: string[];
   active: boolean;
+}
+
+export interface SearchSummary extends SearchInfo, FitStatus {
+  why: string[];
+}
+
+/** The latest entry in a person's profile history: what a fit assessment is stamped with. */
+export async function latestProfileChange(env?: Env, person = activePerson(env)): Promise<number> {
+  return (await readHistory(join(personDirOf(env, person), "profile"))).at(-1)?.n ?? 0;
+}
+
+function personDirOf(env: Env | undefined, person: string): string {
+  return join(dataRoot(env), person);
 }
 
 async function writeJson(path: string, value: unknown): Promise<void> {
@@ -119,19 +134,61 @@ export async function usePerson(id: string, env?: Env): Promise<PersonInfo> {
   return { id: want, name: await personName(want, env), active: true, searches: searchIds(env, want) };
 }
 
-export async function listSearches(env?: Env, person = activePerson(env)): Promise<SearchInfo[]> {
-  const active = activeSearchOrUndefined(env, person);
-  const out: SearchInfo[] = [];
-  for (const id of searchIds(env, person)) {
-    let data: Pick<SearchData, "name" | "targetRoles"> = { name: id, targetRoles: [] };
+export async function listSearches(env?: Env, person = activePerson(env)): Promise<SearchSummary[]> {
+  return searchSummaries(personDirOf(env, person), activeSearchOrUndefined(env, person));
+}
+
+/** Every search in a person's folder (data/<person>/), with why and whether its fit is current. */
+export async function searchSummaries(personFolder: string, activeId?: string): Promise<SearchSummary[]> {
+  const latest = (await readHistory(join(personFolder, "profile"))).at(-1)?.n ?? 0;
+  const root = join(personFolder, SEARCHES_DIR);
+  let ids: string[] = [];
+  try {
+    ids = (await readdir(root, { withFileTypes: true })).filter((d) => d.isDirectory() && existsSync(join(root, d.name, SEARCH_FILE))).map((d) => d.name).sort();
+  } catch {
+    // no searches yet
+  }
+  const out: SearchSummary[] = [];
+  for (const id of ids) {
+    let data: Pick<SearchData, "name" | "targetRoles" | "why" | "fit"> = { name: id, targetRoles: [], why: [] };
     try {
-      data = await loadSearch(join(searchesDir(env, person), id));
+      data = await loadSearch(join(root, id));
     } catch {
       // a broken search.yaml still shows up, by id; `search show` reports the problem
     }
-    out.push({ id, name: data.name, targetRoles: data.targetRoles, active: id === active });
+    out.push({ id, name: data.name, targetRoles: data.targetRoles, why: data.why, active: id === activeId, ...fitStatus(data, latest) });
   }
   return out;
+}
+
+export interface FitInput {
+  level: string;
+  evidence?: string[];
+  gaps?: string[];
+  note?: string;
+}
+
+/** Save how well the profile backs the active search, replacing any earlier assessment. */
+export async function setFit(input: FitInput, env?: Env, now = new Date()): Promise<{ search: string; fit: NonNullable<SearchData["fit"]>; history?: number }> {
+  const person = activePerson(env);
+  const id = activeSearch(env, person);
+  if (!id) throw new PersonError(searchIds(env, person).length ? "more than one search: choose one with `ojs search use <name>`, or pass --search." : "no search yet: `ojs search add <name>` first.");
+  if (!(FIT_LEVELS as readonly string[]).includes(input.level)) throw new PersonError(`--level must be one of: ${FIT_LEVELS.join(", ")}`);
+  const fit = {
+    level: input.level as FitLevel,
+    evidence: (input.evidence ?? []).map((e) => e.trim()).filter(Boolean),
+    gaps: (input.gaps ?? []).map((g) => g.trim()).filter(Boolean),
+    ...(input.note?.trim() ? { note: input.note.trim() } : {}),
+    assessedAt: now.toISOString().slice(0, 10),
+    profileChange: await latestProfileChange(env, person),
+  };
+  const dir = join(searchesDir(env, person), id);
+  const doc = parseDocument(await readFile(join(dir, SEARCH_FILE), "utf8"));
+  doc.set("fit", doc.createNode(fit));
+  const text = doc.toString();
+  parseSearchYaml(text);
+  const history = await writeProfileText(dir, SEARCH_FILE, text, "fit");
+  return { search: id, fit, ...(history ? { history } : {}) };
 }
 
 function activeSearchOrUndefined(env: Env | undefined, person: string): string | undefined {
@@ -143,13 +200,13 @@ function activeSearchOrUndefined(env: Env | undefined, person: string): string |
 }
 
 /** Start a new search for the active person, and make it the active one. */
-export async function addSearch(name: string, opts: { targetRoles?: string[] } = {}, env?: Env): Promise<SearchInfo> {
+export async function addSearch(name: string, opts: { targetRoles?: string[]; why?: string[] } = {}, env?: Env): Promise<SearchInfo> {
   const person = activePerson(env);
   const id = idFor(name, "search");
   const dir = join(searchesDir(env, person), id);
   if (existsSync(dir)) throw new PersonError(`${person} already has a search called "${id}". Use \`ojs search use ${id}\`.`);
   await mkdir(dir, { recursive: true, mode: 0o700 });
-  await writeProfileText(dir, SEARCH_FILE, searchYamlTemplate(name.trim(), opts.targetRoles ?? []), "create");
+  await writeProfileText(dir, SEARCH_FILE, searchYamlTemplate(name.trim(), opts.targetRoles ?? [], opts.why ?? []), "create");
   await useSearch(id, env);
   return { id, name: name.trim(), targetRoles: opts.targetRoles ?? [], active: true };
 }

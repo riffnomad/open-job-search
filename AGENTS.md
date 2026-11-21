@@ -20,7 +20,8 @@ Run `bun run ojs <command> --json` and read the JSON. If `node_modules/` is miss
 |---|---|
 | `person --json` / `person add <name>` / `person use <name>` | Who's set up and who we're working on; add someone (switches to them); switch |
 | `person migrate <name> --json` | A profile from before people existed (`data/profile/`): move it into that person's folders. Asked for by the error when it's needed |
-| `search --json` / `search add <name> [--role "…"]` / `search use <name>` | Their searches; start one (switches to it); switch |
+| `search --json` / `search add <name> [--role "…"] [--why "…"]` / `search use <name>` | Their searches; start one (switches to it); switch |
+| `search fit --json` / `search fit --level <good\|stretch\|leap> --evidence … --gap … [--note …]` | How well the profile backs this search, and whether the profile has changed since; save a new assessment |
 | `search show --json` / `search correct --find … (--replace … \| --remove)` / `search history` / `search undo [n] [--yes]` | What this search looks for; change it; its changes; undo |
 | `flow --json` / `flow done <step> --json` / `flow reopen <step> --json` | Which step they're on, what's there, what could be added; mark a step done when they're happy; go back to one |
 | `profile --json` | Overview: details, roles with depth and gap counts, documents with status (`new`, `changed`, `imported`) |
@@ -48,8 +49,9 @@ open-job-search goes step by step, and each step is finished before the next one
 
 1. **Your experience:** their CV, then everything it left out, role by role.
 2. **Past lives:** other jobs they've had, and what those gave them.
+3. **Roles to aim for:** what they want to look for and why, how well their profile backs it (gently, and their choice always wins), and how many searches that makes.
 
-More steps come later. Steps 1 and 2 are discovery, done once per person: learn everything about them first; jobs, salary and locations come after, in a search. Later steps are done per search, so a second search never repeats discovery. The person decides when a step is done (`ojs flow done <step>`); tell them the more they fill in, the better the roles we can find.
+More steps come later. Steps 1 and 2 are discovery: learn everything about them first. Step 3 turns that into searches. Steps 1 to 3 are done once per person; later steps will be done per search, so a second search never repeats discovery. The person decides when a step is done (`ojs flow done <step>`); tell them the more they fill in, the better the roles we can find.
 
 The workflows are skills in [`.agents/skills/`](.agents/skills/) (Claude Code sees the same files through `.claude/skills/`). If your agent doesn't load skills by itself, read the `SKILL.md` and follow it.
 
@@ -59,6 +61,7 @@ The workflows are skills in [`.agents/skills/`](.agents/skills/) (Claude Code se
 | [import-cv](.agents/skills/import-cv/SKILL.md) | Step 1, and whenever there are `new` or `changed` documents. Settles anything uncertain by asking before it writes |
 | [dig](.agents/skills/dig/SKILL.md) | Steps 1 and 2, or "dig", "interview me", "grill me". One question at a time until each role or past life has real depth |
 | [past-lives](.agents/skills/past-lives/SKILL.md) | Step 2. Explains why other jobs matter, finds them, sets them up |
+| [targets](.agents/skills/targets/SKILL.md) | Step 3, and any new search later. Roles they want and why, fit against the profile, one search or several |
 
 In all of them: ask **one question per message**, in plain text, and show the exact lines before writing them.
 

@@ -12,7 +12,7 @@ packages/
   cli/      `ojs`: the tools agents (and people) call. Parses args, calls core, prints text or --json.
   web/      Local web app (Bun.serve, 127.0.0.1 only). Thin layer over core.
   worker/   Scheduled jobs and notifications. Thin layer over core.
-.agents/skills/  Workflows the agent follows (flow, import-cv, dig, past-lives). .claude/skills links here.
+.agents/skills/  Workflows the agent follows (flow, import-cv, dig, past-lives, targets). .claude/skills links here.
 documents/  The user's own files, one folder per person. Ignored by git except its README.
 data/       What the tool builds: config, then one folder per person (profile, searches). Ignored by git except its README.
 ```

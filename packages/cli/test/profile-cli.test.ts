@@ -189,7 +189,7 @@ describe("ojs flow --json", () => {
   test("status, done, and order", () => {
     const s = ojs("flow").json;
     expect(s.current).toBe("experience");
-    expect(s.steps.map((x: { id: string; state: string }) => `${x.id}:${x.state}`)).toEqual(["experience:current", "past-lives:locked"]);
+    expect(s.steps.map((x: { id: string; state: string }) => `${x.id}:${x.state}`)).toEqual(["experience:current", "past-lives:locked", "targets:locked"]);
     expect(ojs("flow", "done", "past-lives").json.error).toMatch(/Step 1 comes first/);
     expect(ojs("flow", "done", "experience").json.current).toBe("past-lives");
     expect(ojs("flow", "reopen", "1").json.reopened).toEqual(["experience"]);
@@ -216,6 +216,18 @@ describe("people and searches --json", () => {
     expect(ojs("search", "show").json.search.locations).toEqual([]);
     expect(ojs("search", "correct", "--find", "name:", "--replace", "nom:").json.error).toMatch(/would break search.yaml/);
 
+    // Fit: saved against the latest profile change, out of date once the profile moves on.
+    expect(ojs("search", "fit").json).toMatchObject({ fit: null, needsAssessing: true });
+    expect(ojs("search", "fit", "--level", "maybe").json.error).toMatch(/good, stretch, leap/);
+    const saved = ojs("search", "fit", "--level", "stretch", "--evidence", "Route planning at Acme", "--gap", "No people management").json;
+    expect(saved.fit).toMatchObject({ level: "stretch", evidence: ["Route planning at Acme"], gaps: ["No people management"] });
+    expect(ojs("search", "fit").json).toMatchObject({ needsAssessing: false, changesSince: 0 });
+    ojs("profile", "add-bullets", "acme", "--section", "Stories", "--source", "dig 2026-11-22", "--text", "Ran the depot rollout.");
+    expect(ojs("search", "fit").json).toMatchObject({ needsAssessing: true, changesSince: 1 });
+    expect(ojs("search", "add", "Data", "--role", "Data engineer", "--why", "I like the pipelines work").json.search.id).toBe("data");
+    expect(ojs("search", "show").json.search.why).toEqual(["I like the pipelines work"]);
+    ojs("search", "use", "software-engineering");
+
     // A second person: their own profile, untouched by Riley's.
     expect(ojs("person", "add", "Sam Lee").json.person).toMatchObject({ id: "sam-lee", active: true });
     expect(ojs("profile").json.roles).toEqual([]);
@@ -228,7 +240,7 @@ describe("people and searches --json", () => {
     expect(ojs("profile", "--person", "riley", "--search", "product-management").workingOn).toEqual({ person: "riley", search: "product-management" });
 
     expect(ojs("person").json.people.map((p: any) => [p.id, p.active, p.searches])).toEqual([
-      ["riley", false, ["product-management", "software-engineering"]],
+      ["riley", false, ["data", "product-management", "software-engineering"]],
       ["sam-lee", true, []],
     ]);
     const active = JSON.parse(await readFile(join(home, "data", "active.json"), "utf8"));

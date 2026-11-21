@@ -18,6 +18,7 @@ import { findGaps } from "./profile/gaps.ts";
 import { listDocuments } from "./profile/import.ts";
 import { loadProfile } from "./profile/load.ts";
 import { sectionBullets } from "./profile/role-file.ts";
+import { searchSummaries } from "./people.ts";
 
 export const FLOW_FILE = "flow.json";
 
@@ -48,6 +49,14 @@ export const FLOW_STEPS: readonly FlowStepInfo[] = [
     title: "Past lives",
     about: "Other jobs you've had, before or alongside your career, and the skills and stories they gave you.",
     skills: ["past-lives", "dig"],
+    scope: "person",
+  },
+  {
+    id: "targets",
+    n: 3,
+    title: "Roles to aim for",
+    about: "What you want to look for and why, how well your profile backs it, and how many searches that makes.",
+    skills: ["targets"],
     scope: "person",
   },
 ] as const;
@@ -101,7 +110,7 @@ async function writeState(dir: string, state: FlowState): Promise<void> {
   await rename(tmp, path);
 }
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 
 export interface FlowOptions {
   /** The person's folder, data/<person>/. Defaults to the active person. */
@@ -126,6 +135,7 @@ export async function flowStatus(opts: FlowOptions = {}): Promise<FlowStatus> {
   const profile = await loadProfile(profDir);
   const docs = await listDocuments(docsDir, profDir);
 
+  const searches = await searchSummaries(person);
   const reports = {
     roles: profile.roles.map((r) => ({ r, g: findGaps(r.doc) })),
     lives: profile.pastLives.map((p) => ({ p, g: findGaps(p.doc) })),
@@ -154,10 +164,19 @@ export async function flowStatus(opts: FlowOptions = {}): Promise<FlowStatus> {
       if (!profile.roles.length) blockers.push("No roles yet: import a CV or add a role first.");
     } else if (info.id === "past-lives") {
       const dugLives = reports.lives.filter(({ p }) => dug(p.doc));
-      progress.push(profile.pastLives.length ? `${plural(profile.pastLives.length, "past life")}, ${dugLives.length} dug into` : "No past lives yet (that's fine if there aren't any)");
+      progress.push(profile.pastLives.length ? `${plural(profile.pastLives.length, "past life", "past lives")}, ${dugLives.length} dug into` : "No past lives yet (that's fine if there aren't any)");
       for (const { p } of reports.lives) if (!dug(p.doc)) suggestions.push(`Dig into ${p.doc.frontMatter.field} (${p.file})`);
       const stillToAsk = reports.lives.reduce((n, { g }) => n + g.depth.stillToAsk, 0);
       if (stillToAsk) suggestions.push(`${plural(stillToAsk, "question")} saved under "Still to ask"`);
+    } else if (info.id === "targets") {
+      progress.push(searches.length ? `${plural(searches.length, "search", "searches")}: ${searches.map((x) => x.name).join(", ")}` : "No searches yet");
+      for (const x of searches) {
+        if (!x.targetRoles.length) suggestions.push(`Add target roles to "${x.name}"`);
+        if (!x.why.length) suggestions.push(`Ask why they want "${x.name}"`);
+        if (!x.fit) suggestions.push(`Assess how well the profile backs "${x.name}"`);
+        else if (x.needsAssessing) suggestions.push(`"${x.name}": the profile has ${plural(x.changesSince, "change")} since its fit was assessed; check it again`);
+      }
+      if (!searches.length) blockers.push("No searches yet: decide what to look for first.");
     }
 
     if (info.scope === "search" && !opts.search) blockers.push("Needs a search first: `ojs search add <name>`.");

@@ -19,6 +19,7 @@ import {
   SEARCH_FILE,
   searchDir,
   searchesDir,
+  setFit,
   usePerson,
   useSearch,
 } from "@ojs/core";
@@ -34,7 +35,9 @@ export const PEOPLE_HELP = `People (one workspace can hold several people's job 
 
 Searches (one person can look for more than one kind of job):
   search                      Their searches, and which one we're on
-  search add <name>           Start a search ("Software engineering") and switch to it [--role "…" …]
+  search add <name>           Start a search ("Software engineering") and switch to it [--role "…" …] [--why "…" …]
+  search fit                  How well the profile backs this search, and whether it's out of date
+  search fit --level <l>      Save it: good | stretch | leap, [--evidence "…" …] [--gap "…" …] [--note "…"]
   search use <name>           Switch to another search
   search show                 What this search is looking for
   search correct              Change search.yaml: --find "exact text" (--replace "new" | --remove) [--dry-run]
@@ -94,6 +97,11 @@ interface Flags {
   json: boolean;
   yes?: boolean;
   role?: string[];
+  why?: string[];
+  level?: string;
+  evidence?: string[];
+  gap?: string[];
+  note?: string;
   find?: string;
   replace?: string;
   remove?: boolean;
@@ -143,20 +151,39 @@ export async function searchCommand(rest: string[], f: Flags, out: Out): Promise
     case undefined:
     case "list": {
       const searches = await listSearches(undefined, person);
+      const fitText = (s: (typeof searches)[number]) => (!s.fit ? "fit not assessed" : `fit: ${s.fit.level}${s.needsAssessing ? ` (${s.changesSince} profile change${s.changesSince === 1 ? "" : "s"} since)` : ""}`);
       const human = searches.length
-        ? searches.map((s) => `${s.active ? "→" : " "} ${s.name} (${s.id})${s.targetRoles.length ? `: ${s.targetRoles.join(", ")}` : ""}`).join("\n")
+        ? searches.map((s) => `${s.active ? "→" : " "} ${s.name} (${s.id})${s.targetRoles.length ? `: ${s.targetRoles.join(", ")}` : ""}. ${fitText(s)}`).join("\n")
         : `${nameOf(person)} has no searches yet. \`ojs search add <name>\`.`;
       return out(human, { person, searches });
     }
     case "add": {
       if (!name) throw new PersonError('usage: ojs search add <name> [--role "Backend engineer" …]');
-      const s = await addSearch(name, { targetRoles: f.role ?? [] });
+      const s = await addSearch(name, { targetRoles: f.role ?? [], why: f.why ?? [] });
       return out(`Started the search "${s.name}" for ${nameOf(person)}, and switched to it.`, { person, search: s });
     }
     case "use": {
       if (!name) throw new PersonError("usage: ojs search use <name>");
       const s = await useSearch(name);
       return out(`Working on the search "${s.name}" now.`, { person, search: s });
+    }
+    case "fit": {
+      if (f.level) {
+        const r = await setFit({ level: f.level, evidence: f.evidence ?? [], gaps: f.gap ?? [], ...(f.note ? { note: f.note } : {}) });
+        return out(`Saved: ${r.fit.level}, against profile change #${r.fit.profileChange}.`, r);
+      }
+      const current = (await listSearches(undefined, person)).find((s) => s.active);
+      if (!current) searchDir(undefined, person); // throws the right message
+      const c = current!;
+      const human = !c.fit
+        ? `"${c.name}": fit not assessed yet.`
+        : [
+            `"${c.name}": ${c.fit.level} (assessed ${c.fit.assessedAt}${c.needsAssessing ? `; the profile has ${c.changesSince} change${c.changesSince === 1 ? "" : "s"} since, so check it again` : ""})`,
+            ...c.fit.evidence.map((e) => `  + ${e}`),
+            ...c.fit.gaps.map((g) => `  - ${g}`),
+            ...(c.fit.note ? [`  ${c.fit.note}`] : []),
+          ].join("\n");
+      return out(human, { search: c.id, fit: c.fit ?? null, changesSince: c.changesSince, needsAssessing: c.needsAssessing });
     }
     case "show": {
       const dir = searchDir(undefined, person);

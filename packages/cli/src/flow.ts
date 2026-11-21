@@ -19,7 +19,7 @@ function render(status: FlowStatus, who: WorkingOn): string {
       if (s.state === "current") for (const sug of s.suggestions) lines.push(`     + ${sug}`);
     }
   }
-  if (status.complete) lines.push("", "All steps so far are done. More are coming: discovery, evaluation, applications.");
+  if (status.complete) lines.push("", "All steps so far are done. More are coming: preferences, finding roles, applications.");
   else {
     const cur = status.steps.find((s) => s.state === "current")!;
     lines.push("", `The more you add, the better the roles we can find you. When you're happy with step ${cur.n}: \`ojs flow done ${cur.id}\`.`);

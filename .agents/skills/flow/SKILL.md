@@ -13,8 +13,9 @@ open-job-search works in steps. Each step is finished before the next one starts
 |---|---|---|
 | 1. Your experience | Their CV, then everything it left out, role by role | [import-cv](../import-cv/SKILL.md), then [dig](../dig/SKILL.md) |
 | 2. Past lives | Other jobs, before or alongside their career, and what they gave them | [past-lives](../past-lives/SKILL.md), then [dig](../dig/SKILL.md) |
+| 3. Roles to aim for | What they want to look for and why, how well the profile backs it, and how many searches that makes | [targets](../targets/SKILL.md) |
 
-More steps (preferences, discovery, evaluation, applications…) come later. Steps 1 and 2 are done once per person. Later steps are done for each **search** (what they're looking for, e.g. "software engineering" and "product management"), so starting a second search never repeats discovery.
+More steps (preferences, finding roles, evaluation, applications…) come later. Steps 1 to 3 are done once per person. Later steps are done for each **search** (what they're looking for, e.g. "software engineering" and "product management"), so starting a second search never repeats discovery.
 
 ## Whose search is this
 
@@ -43,3 +44,7 @@ The person decides when a step is done. Never push them on, never hold them back
 - If they want to go back to an earlier step later: `bun run ojs flow reopen <step> --json` (the steps after it are reopened too, so they're gone through again in order).
 
 They can stop any time. Next session, `ojs flow` brings them back to the same place.
+
+## Another search later
+
+If they want to look for something new after step 3 ("I also want to try product roles"), follow the [targets](../targets/SKILL.md) skill for it, whatever step they're on: it checks what's changed in their profile first, then the new role's fit.

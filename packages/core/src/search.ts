@@ -14,11 +14,37 @@ import { z } from "zod";
 import { SEARCH_FILE } from "./paths.ts";
 import { dropNulls, ProfileFileError } from "./profile/role-file.ts";
 
+export const FIT_LEVELS = ["good", "stretch", "leap"] as const;
+export type FitLevel = (typeof FIT_LEVELS)[number];
+
+/**
+ * How well the profile backs this search, at the level they're aiming for.
+ * Saved so later steps can use the gaps, and stamped with the profile change
+ * it was made against, so it's clear when the profile has moved on since.
+ */
+export const Fit = z.object({
+  /** good: the profile clearly covers it. stretch: most of it, a gap or two (normal). leap: almost nothing the role needs. */
+  level: z.enum(FIT_LEVELS),
+  /** Profile lines, projects or past lives that back it, in short. */
+  evidence: z.array(z.string()).default([]),
+  /** What the role needs that the profile doesn't show yet. */
+  gaps: z.array(z.string()).default([]),
+  /** Anything else said about it: a stepping stone offered, what they decided. */
+  note: z.string().optional(),
+  assessedAt: z.string().min(1),
+  /** The latest profile history entry when it was assessed (0 when there was none). */
+  profileChange: z.number().int().nonnegative(),
+});
+export type Fit = z.infer<typeof Fit>;
+
 export const SearchData = z.object({
   version: z.literal(1).default(1),
   /** In their words: "Software engineering", "Product management". */
   name: z.string().min(1),
   targetRoles: z.array(z.string()).default([]),
+  /** Why they want this, in their words. */
+  why: z.array(z.string()).default([]),
+  fit: Fit.optional(),
   seniority: z.string().optional(),
   locations: z.array(z.string()).default([]), // "London", "UK", "Remote (UK)"
   workMode: z.array(z.enum(["remote", "hybrid", "onsite"])).default([]),
@@ -66,7 +92,7 @@ export async function loadSearch(dir: string): Promise<SearchData> {
 const yamlString = (s: string) => stringify(s).trimEnd();
 
 /** search.yaml for a new search, with comments explaining each part. */
-export function searchYamlTemplate(name: string, targetRoles: string[] = []): string {
+export function searchYamlTemplate(name: string, targetRoles: string[] = [], why: string[] = []): string {
   return `# One job search: what you're looking for. Your experience is shared by all
 # your searches (data/<you>/profile/); this file is only about this one.
 # Everything except the name is optional.
@@ -74,6 +100,8 @@ version: 1
 name: ${yamlString(name)}
 
 targetRoles: ${targetRoles.length ? `[${targetRoles.map(yamlString).join(", ")}]` : "[]"}${targetRoles.length ? "" : "   # e.g. [Backend engineer, Platform engineer]"}
+why:${why.length ? `\n${why.map((w) => `  - ${yamlString(w)}`).join("\n")}` : " []               # why they want this, in their words"}
+# fit: set with \`ojs search fit\`: how well the profile backs this search
 seniority:         # e.g. senior, lead
 locations: []      # e.g. [London, Remote (UK)]
 workMode: []       # remote | hybrid | onsite
@@ -85,4 +113,19 @@ angle:             # how to present your experience for this search
   theyBuy:         # what an employer hiring for this is really buying
   leadWith: []     # roles, projects or skills to lead with
 `;
+}
+
+export interface FitStatus {
+  fit?: Fit;
+  /** Profile changes made since the fit was assessed. */
+  changesSince: number;
+  /** True when there's no fit yet, or the profile has changed since. */
+  needsAssessing: boolean;
+}
+
+/** Whether a search's fit is current, given the latest profile history entry. */
+export function fitStatus(data: Pick<SearchData, "fit">, latestProfileChange: number): FitStatus {
+  if (!data.fit) return { changesSince: 0, needsAssessing: true };
+  const changesSince = Math.max(0, latestProfileChange - data.fit.profileChange);
+  return { fit: data.fit, changesSince, needsAssessing: changesSince > 0 };
 }

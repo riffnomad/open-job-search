@@ -37,8 +37,9 @@ It works step by step, and you decide when each step is done:
 
 1. **Your experience.** It reads your CV, asks about anything it isn't sure of before saving, then interviews you role by role to get down everything your CV left out.
 2. **Past lives.** Other jobs you've had, before or alongside your career, and the skills and stories they gave you.
+3. **Roles to aim for.** What you want to look for and why. It checks, gently, how well your profile backs each one (and always goes with your choice), then sets up one search or several.
 
-Then come your searches (what you're looking for), finding roles, and applying. The more you tell it in the first steps, the better the roles it finds. `bun run ojs flow` shows where you are. The workflows are plain-text skills in [`.agents/skills/`](.agents/skills/).
+Then come your preferences for each search, finding roles, and applying. The more you tell it in the first steps, the better the roles it finds. `bun run ojs flow` shows where you are. The workflows are plain-text skills in [`.agents/skills/`](.agents/skills/).
 
 ## Your files
 
