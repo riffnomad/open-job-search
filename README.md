@@ -33,7 +33,12 @@ claude        # or codex, agy, opencode
 > Set me up and import my CV
 ```
 
-It reads your CV, asks you about anything it isn't sure of before saving, then offers to interview you role by role to get down what your CV left out. The workflows are plain-text skills in [`.agents/skills/`](.agents/skills/).
+It works step by step, and you decide when each step is done:
+
+1. **Your experience.** It reads your CV, asks about anything it isn't sure of before saving, then interviews you role by role to get down everything your CV left out.
+2. **Past lives.** Other jobs you've had, before or alongside your career, and the skills and stories they gave you.
+
+Then come your preferences, finding roles, and applying. The more you tell it in the first steps, the better the roles it finds. `bun run ojs flow` shows where you are. The workflows are plain-text skills in [`.agents/skills/`](.agents/skills/).
 
 ## Your files
 
@@ -50,6 +55,7 @@ Your agent runs these for you, but you can too. Every command takes `--json`.
 
 ```bash
 bun run ojs init                    # find your agent CLIs and set one as default
+bun run ojs flow                    # where you are in the steps, and what's next
 bun run ojs profile                 # overview of your profile
 bun run ojs profile import          # import new files in documents/ (shows changes, asks first)
 bun run ojs profile gaps            # what's missing in each role

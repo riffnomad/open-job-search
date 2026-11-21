@@ -16,6 +16,7 @@ Run `bun run ojs <command> --json` and read the JSON. If `node_modules/` is miss
 
 | Command | Use |
 |---|---|
+| `flow --json` / `flow done <step> --json` / `flow reopen <step> --json` | Which step they're on, what's there, what could be added; mark a step done when they're happy; go back to one |
 | `profile --json` | Overview: details, roles with depth and gap counts, documents with status (`new`, `changed`, `imported`) |
 | `profile text <file> --json` | Plain text of a CV (PDF, DOCX, MD, TXT). Use it even if you can read PDFs, so extraction is consistent |
 | `profile schema --json` | Shape of an extraction for `import --extracted` |
@@ -33,17 +34,25 @@ When a role has more than one position (a promotion, a move to another team), sa
 
 `<role>` can be a file name (`2019-06-acme-logistics`) or part of the employer or field (`acme`). Sources: `cv`, `linkedin`, `dig` (things the person tells you), `you` (the person wrote it), `inferred` (your guesses; only allowed under "To confirm").
 
-## Workflows
+## The flow
 
-The step-by-step workflows are skills in [`.agents/skills/`](.agents/skills/) (Claude Code sees the same files through `.claude/skills/`). If your agent doesn't load skills by itself, read the `SKILL.md` and follow it.
+open-job-search goes step by step, and each step is finished before the next one starts. **Start every session with `bun run ojs flow --json`** and follow the [flow skill](.agents/skills/flow/SKILL.md): it says where the person is and what to do next.
+
+1. **Your experience:** their CV, then everything it left out, role by role.
+2. **Past lives:** other jobs they've had, and what those gave them.
+
+More steps come later. Steps 1 and 2 are discovery: learn everything about the person first; jobs, salary and locations come after. The person decides when a step is done (`ojs flow done <step>`); tell them the more they fill in, the better the roles we can find.
+
+The workflows are skills in [`.agents/skills/`](.agents/skills/) (Claude Code sees the same files through `.claude/skills/`). If your agent doesn't load skills by itself, read the `SKILL.md` and follow it.
 
 | Skill | When |
 |---|---|
-| [import-cv](.agents/skills/import-cv/SKILL.md) | "Set me up", "import my CV", first time in the repo, or `profile --json` shows `new` or `changed` documents. Settles anything uncertain by asking before it writes |
-| [dig](.agents/skills/dig/SKILL.md) | After an import, or "dig", "interview me", "grill me", "go deeper on <role>". One question at a time until each role has real depth |
-| [past-lives](.agents/skills/past-lives/SKILL.md) | Earlier careers and work outside their field: bar work, trades, caring, the forces. After an import or a dig, when they mention what they used to do, or when an imported role looks like an earlier career |
+| [flow](.agents/skills/flow/SKILL.md) | Every session, "set me up", "what's next". Runs the steps in order |
+| [import-cv](.agents/skills/import-cv/SKILL.md) | Step 1, and whenever there are `new` or `changed` documents. Settles anything uncertain by asking before it writes |
+| [dig](.agents/skills/dig/SKILL.md) | Steps 1 and 2, or "dig", "interview me", "grill me". One question at a time until each role or past life has real depth |
+| [past-lives](.agents/skills/past-lives/SKILL.md) | Step 2. Explains why other jobs matter, finds them, sets them up |
 
-In both: ask **one question per message**, in plain text, and show the exact lines before writing them.
+In all of them: ask **one question per message**, in plain text, and show the exact lines before writing them.
 
 ## Their details and preferences
 

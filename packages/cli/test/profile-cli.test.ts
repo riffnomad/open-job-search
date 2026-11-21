@@ -175,3 +175,14 @@ describe("correct, history, undo --json", () => {
     expect(ojs("profile", "undo", String(hist.entries[0].n)).json.error).toMatch(/already been undone/);
   });
 });
+
+describe("ojs flow --json", () => {
+  test("status, done, and order", () => {
+    const s = ojs("flow").json;
+    expect(s.current).toBe("experience");
+    expect(s.steps.map((x: { id: string; state: string }) => `${x.id}:${x.state}`)).toEqual(["experience:current", "past-lives:locked"]);
+    expect(ojs("flow", "done", "past-lives").json.error).toMatch(/Step 1 comes first/);
+    expect(ojs("flow", "done", "experience").json.current).toBe("past-lives");
+    expect(ojs("flow", "reopen", "1").json.reopened).toEqual(["experience"]);
+  });
+});

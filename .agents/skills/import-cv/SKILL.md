@@ -1,6 +1,6 @@
 ---
 name: import-cv
-description: Import a CV or other career document from documents/ into the person's profile. Reads it, settles everything uncertain by asking them one question at a time, previews, writes on their yes, then hands over to the dig skill. Use when someone says "set me up", "import my CV", adds a document, or `ojs profile --json` shows documents with status new or changed.
+description: Import a CV or other career document from documents/ into the person's profile. Reads it, settles everything uncertain by asking them one question at a time, previews, writes on their yes, then hands over to the dig skill. The start of step 1 of the flow; also when someone adds a document, or `ojs profile --json` shows documents with status new or changed.
 ---
 
 # Import a CV
@@ -19,7 +19,7 @@ No documents: ask them to put their CV in `documents/` (older CVs too, they ofte
 1. `bun run ojs profile text documents/<file> --json` for the text. Use it even if you can read the file yourself, so every agent works from the same text.
 2. `bun run ojs profile schema --json` for the shape.
 3. Extract into that shape:
-   - Every job, including ones outside their main field. Earlier careers (bar work, retail, a trade) still go in as roles; the [past-lives skill](../past-lives/SKILL.md) offers to move them afterwards.
+   - Every job, including ones outside their main field. Earlier careers (bar work, retail, a trade) still go in as roles; in step 2 the [past-lives skill](../past-lives/SKILL.md) offers to move them. Don't raise that now.
    - The CV's own wording. One CV bullet stays one bullet. Numbers exactly as written. Dates as written.
    - Several positions at one employer go in one role, with every position listed. Give each line the position it's listed under: `{ "text": "…", "position": "<title as in positions>" }`.
    - Set `type` only when the document says it.
@@ -56,4 +56,4 @@ Don't dig for depth here. Collect anything interesting they mention in passing f
 
 ## 5. Hand over
 
-Show the overview (`bun run ojs profile --json`: roles, depth, gaps). Say plainly that a CV only holds a fraction of what they did, and offer to dig into one role now, suggesting the one that matters most for what they want next. On a yes, follow [the dig skill](../dig/SKILL.md). If any imported job looks like an earlier career, mention that you'll offer to keep it as a past life afterwards ([past-lives skill](../past-lives/SKILL.md)).
+Show the overview (`bun run ojs profile --json`: roles, depth, gaps). Say plainly that a CV only holds a fraction of what they did, and that the rest of step 1 is getting that down, role by role. Suggest starting with their most recent role, and follow [the dig skill](../dig/SKILL.md).

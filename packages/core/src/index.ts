@@ -2,6 +2,7 @@ export * from "./config.ts";
 export * from "./detect.ts";
 export * from "./llm/index.ts";
 export * from "./paths.ts";
+export * from "./flow.ts";
 export * from "./profile/role-file.ts";
 export * from "./profile/schema.ts";
 export * from "./profile/load.ts";

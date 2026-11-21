@@ -12,7 +12,7 @@ packages/
   cli/      `ojs`: the tools agents (and people) call. Parses args, calls core, prints text or --json.
   web/      Local web app (Bun.serve, 127.0.0.1 only). Thin layer over core.
   worker/   Scheduled jobs and notifications. Thin layer over core.
-.agents/skills/  Workflows the agent follows (import-cv, dig, past-lives). .claude/skills links here.
+.agents/skills/  Workflows the agent follows (flow, import-cv, dig, past-lives). .claude/skills links here.
 documents/  The user's own files. Ignored by git except its README.
 data/       What the tool builds for the user. Ignored by git except its README.
 ```
@@ -41,7 +41,7 @@ bun run web          # local web app
 
 ## Writing a workflow skill
 
-One folder per skill in `.agents/skills/<name>/SKILL.md`, with `name` and `description` front matter (the description is what makes agents pick it up). Keep skills agent-neutral: plain steps that call `bun run ojs … --json`. No logic that belongs in core, and no tool names specific to one agent. Add a row for it in the Workflows table in AGENTS.md.
+One folder per skill in `.agents/skills/<name>/SKILL.md`, with `name` and `description` front matter (the description is what makes agents pick it up). Keep skills agent-neutral: plain steps that call `bun run ojs … --json`. No logic that belongs in core, and no tool names specific to one agent. Add a row for it in the skills table in AGENTS.md. If it's a new step, add it to `FLOW_STEPS` in `packages/core/src/flow.ts` and the flow skill.
 
 ## Adding an agent CLI preset
 

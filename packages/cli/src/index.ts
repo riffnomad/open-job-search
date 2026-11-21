@@ -14,12 +14,14 @@ import {
   ProfileLoadError,
   ProviderConfig,
   ProviderError,
+  FlowError,
   UndoError,
   resolveProvider,
   saveConfig,
   which,
 } from "@ojs/core";
 import pkg from "../package.json" with { type: "json" };
+import { FLOW_HELP, flowCommand } from "./flow.ts";
 import { PROFILE_HELP, profileCommand } from "./profile.ts";
 
 const HELP = `ojs: open-job-search
@@ -32,10 +34,12 @@ Commands:
   providers add <id>       Add or replace a provider (see options below)
   providers default <id>   Set the default provider
   ask <prompt>             Send a prompt to a provider (handy for testing a setup)
+  flow                     Where you are in the steps, and what's next (see below)
   profile                  Your profile: roles, past lives, preferences (see below)
   doctor                   Check your setup
   help                     Show this help
 
+${FLOW_HELP}
 ${PROFILE_HELP}
 Global options:
   --json                   Machine-readable output (for scripts and AI agents)
@@ -220,6 +224,8 @@ async function main(): Promise<void> {
       return providers(rest[0], rest[1]);
     case "ask":
       return ask(rest.join(" ") || undefined);
+    case "flow":
+      return flowCommand(rest, out);
     case "profile":
       return profileCommand(rest, values, out);
     case "doctor":
@@ -230,7 +236,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  const known = [ConfigError, ProviderError, ProfileError, ProfileFileError, ProfileLoadError, ExtractError, UndoError].some((E) => err instanceof E);
+  const known = [ConfigError, ProviderError, ProfileError, ProfileFileError, ProfileLoadError, ExtractError, UndoError, FlowError].some((E) => err instanceof E);
   const message = known ? (err as Error).message : String((err as Error)?.stack ?? err);
   if (values.json) console.log(JSON.stringify({ error: message }));
   else console.error(`ojs: ${message}`);

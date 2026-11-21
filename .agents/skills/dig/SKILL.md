@@ -1,17 +1,18 @@
 ---
 name: dig
-description: Interview the person about one role or past life at a time, one question per message, pushing for specifics (numbers, scale, how, what changed) until the role has real depth, and write each answer into their profile. Use after a CV import, when they say "dig", "interview me", "grill me", "go deeper on <role>", or when `ojs profile gaps` shows thin roles.
+description: Interview the person about one role or past life at a time, one question per message, pushing for specifics (numbers, scale, how, what changed) until it has real depth, and write each answer into their profile. Used in step 1 of the flow for roles and step 2 for past lives; also when they say "dig", "interview me", "grill me" or "go deeper on <role>".
 ---
 
 # Dig into a role
 
-A CV holds a fraction of what someone did. Your job is to get the rest out of their head and into their profile: specific, true, and in their own words. Be a good interviewer: curious, persistent, warm. Don't accept the first vague answer, but never make them feel bad.
+A CV holds a fraction of what someone did. Your job is to get the rest out of their head and into their profile: specific, true, and in their own words. This is discovery: you're building a bank of everything they've done, not tailoring to a particular job, so don't ask what they're looking for. Be a good interviewer: curious, persistent, warm. Don't accept the first vague answer, but never make them feel bad.
 
 Follow the **Facts, not polish** rules in [AGENTS.md](../../../AGENTS.md) throughout.
 
 ## 1. Pick a role
 
-- If they named one, use it. Otherwise run `bun run ojs profile gaps --json` and suggest the role that matters most for what they want next (check `preferences` in `bun run ojs profile --json`), or the thinnest recent one. Say why in one line.
+- If they named one, use it. Otherwise run `bun run ojs profile gaps --json` and suggest one: the most recent role that hasn't been dug into, or the one they seem proudest of. Say why in one line.
+- In step 1 (your experience), dig into roles. Roles that look like an earlier career (bar work before a move into tech, say) wait for step 2, past lives: skip them here and say so.
 - Read it in full: `bun run ojs profile show <role> --json`. Know what's there before you ask, so you never ask for something they already told you.
 
 ## 2. Clear "To confirm" first
@@ -56,17 +57,17 @@ If they correct something already in the file (a wrong number, a word they would
 
 ## 5. Move on or stop
 
-- When a role feels well covered (run `profile gaps <role> --json` to check), say what you've added and offer the next role.
+- When a role feels well covered (run `profile gaps <role> --json` to check), say what you've added and offer the next one. When there's no next one, or they've had enough, go back to the [flow skill](../flow/SKILL.md) to finish the step.
 - Good questions you didn't get to: save them under `Still to ask` with `--source dig`, so the next session can pick up there.
 - They can stop any time. When they do, say briefly what was added and what's still open.
 
-## Past lives
+## Past lives (step 2)
 
-Finding and setting up past lives is the [past-lives skill](../past-lives/SKILL.md). If they have none yet, at a natural break offer to go through what they did before or alongside this career, and follow that skill.
+Finding and setting up past lives is the [past-lives skill](../past-lives/SKILL.md), in step 2 of the flow. Don't bring them up during step 1.
 
 Digging into a past life works the same as a role, with its own headings: `What I did`, `Transferable skills`, `Stories`, `Trade knowledge`. Focus on:
 
 - **Transferable skills, each with proof.** A skill on its own is worth little ("good under pressure"). Pin each one to a moment that shows it ("ran the bar alone on New Year's Eve, 300 people, nobody waited more than a few minutes"). Ask "when did that happen?" until you have one. Write the skill and the moment as one line.
 - **Stories:** the busy Saturday, the difficult customer, the thing that went wrong and how they fixed it.
-- **Trade knowledge:** what they know that most people don't (how to price a job, read a room, fix an engine, calm someone down).
+- **Trade knowledge:** what they know that most people don't (how to price a job, read a room, fix an engine, calm someone down). It can open doors later: a mechanic knows cars, which matters to a car maker hiring software engineers.
 - **Scale, loosely:** how many customers, covers, sites or people, as they remember it. Estimates as they say them.
