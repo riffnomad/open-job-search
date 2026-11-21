@@ -29,6 +29,7 @@ import {
   roleFileName,
   RoleFrontMatter,
   slugify,
+  withFrontMatter,
   type FileKind,
   type PastLifeFile,
   type RoleFile,
@@ -372,4 +373,114 @@ export async function applyUndo(plan: UndoPlan, dir = profileDir()): Promise<num
   const before = await readFile(path, "utf8");
   await unlink(path);
   return recordChange(dir, plan.entry.file, before, null, action);
+}
+
+/** Where each role section's content goes in a past life. Anything not listed keeps its heading. */
+const ROLE_TO_PAST_LIFE: Record<string, string> = {
+  context: "What I did",
+  "what i owned": "What I did",
+  achievements: "What I did",
+  "hard moments": "Stories",
+  stories: "Stories",
+  "skills in depth": "Trade knowledge",
+  "to confirm": "To confirm",
+  "still to ask": "Still to ask",
+};
+
+export interface MoveOptions {
+  /** The past life's field, e.g. "Hospitality". Defaults to the role's industry. An existing past life with this field is added to. */
+  field?: string;
+  dryRun?: boolean;
+}
+
+export interface MoveResult {
+  from: string;
+  to: string;
+  /** Added to a past life that already existed. */
+  merged: boolean;
+  /** Lines carried over (bullets, subheadings and notes). */
+  lines: number;
+  /** Where each role section went. */
+  sections: { from: string; to: string }[];
+  written: boolean;
+}
+
+function periodOf(p: { start: string; end?: string | undefined }): string {
+  return `${p.start} to ${p.end ?? "present"}`;
+}
+
+/** Add raw section content, keeping plain lines out of the last `### ` block. */
+function addRaw(doc: PastLifeFile, heading: string, body: string): PastLifeFile {
+  const sections = doc.sections.slice();
+  const idx = sections.findIndex((s) => s.heading.trim().toLowerCase() === heading.toLowerCase());
+  if (idx === -1) {
+    // A heading past lives don't have: put it before To confirm / Still to ask.
+    let at = sections.findIndex((s) => ["to confirm", "still to ask"].includes(s.heading.trim().toLowerCase()));
+    if (at === -1) at = sections.length;
+    sections.splice(at, 0, { heading, headingLine: `## ${heading}`, raw: `${body}\n` });
+    return { ...doc, sections };
+  }
+  const s = sections[idx]!;
+  const lines = s.raw.replace(/\n+$/, "").split("\n");
+  const existing = s.raw.trim() === "" ? [] : lines;
+  const firstSub = existing.findIndex((l) => /^### /.test(l));
+  let merged: string[];
+  if (firstSub !== -1 && !/^### /.test(body)) {
+    const before = existing.slice(0, firstSub);
+    while (before.length && before.at(-1)!.trim() === "") before.pop();
+    merged = [...before, ...body.split("\n"), "", ...existing.slice(firstSub)];
+  } else {
+    merged = [...existing, ...body.split("\n")];
+  }
+  sections[idx] = { ...s, raw: `${merged.join("\n")}\n` };
+  return { ...doc, sections };
+}
+
+/**
+ * Turn a role into a past life (an earlier career), keeping every line with
+ * its source. Adds to an existing past life with the same field. Logged as
+ * two changes: the past life written, then the role file removed.
+ */
+export async function moveToPastLife(ref: string, opts: MoveOptions = {}, dir = profileDir()): Promise<MoveResult> {
+  const profile = await loadProfile(dir);
+  const entry = resolveEntry(profile, ref);
+  if (entry.kind !== "role") throw new ProfileError(`${entry.file} is already a past life`);
+  const role = entry.doc.frontMatter;
+  const field = (opts.field ?? role.industry ?? "").trim();
+  if (!field) throw new ProfileError(`what field was this? Give --field, e.g. --field "Hospitality" (${entry.file} has no industry to use)`);
+
+  const to = `${PAST_LIVES_DIR}/${pastLifeFileName({ field, roles: [] })}`;
+  const existing = profile.pastLives.find((p) => p.file === to);
+  let doc: PastLifeFile = existing ? existing.doc : newProfileFile("past-life", { field, roles: [] });
+
+  const fm = doc.frontMatter;
+  const newRoles = role.positions.map((p) => ({ title: p.title, employer: role.employer, period: periodOf(p) }));
+  const skills = [...new Set([...(fm.skills ?? []), ...role.skills])];
+  doc = withFrontMatter(doc, { ...fm, roles: [...fm.roles, ...newRoles], ...(skills.length ? { skills } : {}) });
+
+  const sections: MoveResult["sections"] = [];
+  let lines = 0;
+  // Several role sections can land in one heading; gather them in order first.
+  const gathered = new Map<string, string[]>();
+  for (const s of entry.doc.sections) {
+    const body = s.raw.replace(/^\n+|\n+$/g, "");
+    if (!body.trim()) continue;
+    const target = ROLE_TO_PAST_LIFE[s.heading.trim().toLowerCase()] ?? s.heading.trim();
+    gathered.set(target, [...(gathered.get(target) ?? []), body]);
+    sections.push({ from: s.heading.trim(), to: target });
+    lines += body.split("\n").filter((l) => l.trim()).length;
+  }
+  for (const [heading, bodies] of gathered) doc = addRaw(doc, heading, bodies.join("\n"));
+
+  const text = renderProfileFile(doc);
+  parseProfileFile("past-life", text, to); // never write what we can't read back
+  const result: MoveResult = { from: entry.file, to, merged: Boolean(existing), lines, sections, written: false };
+  if (opts.dryRun) return result;
+
+  await writeProfileText(dir, to, text, `move from ${entry.file}`);
+  const path = join(dir, entry.file);
+  const before = await readFile(path, "utf8");
+  await unlink(path);
+  await recordChange(dir, entry.file, before, null, `move to ${to}`);
+  return { ...result, written: true };
 }

@@ -53,6 +53,7 @@ export const PastLifeFrontMatter = z.looseObject({
       }),
     )
     .default([]),
+  skills: z.array(z.string()).optional(),
 });
 export type PastLifeFrontMatter = z.infer<typeof PastLifeFrontMatter>;
 

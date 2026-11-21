@@ -3,7 +3,8 @@ import { mkdtemp, readFile, rm, writeFile, mkdir, access } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { diffLines, formatEntry, parseHistory, readHistory, recordChange, reverseEntry, undoTarget, UndoError, type HistoryEntry } from "../src/profile/history.ts";
-import { addBullets, applyUndo, correctProfile, createEntry, planUndo, ProfileError } from "../src/profile/store.ts";
+import { addBullets, applyUndo, correctProfile, createEntry, moveToPastLife, planUndo, ProfileError } from "../src/profile/store.ts";
+import { findSection, parseProfileFile, sectionBullets } from "../src/profile/role-file.ts";
 
 const dirs: string[] = [];
 async function temp(): Promise<string> {
@@ -150,5 +151,77 @@ describe("undo and correct on a real profile", () => {
     await correctProfile("profile", { find: "name: Sam", replace: "name: Sam Example" }, dir);
     expect(await readFile(join(dir, "profile.yaml"), "utf8")).toContain("name: Sam Example");
     expect((await readHistory(dir))[0]).toMatchObject({ action: "correct", file: "profile.yaml" });
+  });
+});
+
+describe("moveToPastLife", () => {
+  async function withBarJob() {
+    const dir = await temp();
+    await createEntry("role", { employer: "The Crown", positions: [{ title: "Bartender", start: "2012-06", end: "2014" }], industry: "Hospitality", skills: ["Cocktails"] }, dir);
+    await addBullets("crown", { section: "What I owned", texts: ["Ran the bar on Saturdays."], source: { kind: "cv" } }, dir);
+    await addBullets("crown", { section: "Projects", subheading: "New menu", texts: ["Wrote the cocktail menu."], source: { kind: "dig", date: "2026-11-21" } }, dir);
+    await addBullets("crown", { section: "Achievements", texts: ["Takings up 20%."], source: { kind: "you" } }, dir);
+    await addBullets("crown", { section: "Hard moments", texts: ["A fight on New Year's Eve."], source: { kind: "dig", date: "2026-11-21" } }, dir);
+    await addBullets("crown", { section: "Still to ask", texts: ["How many covers on a busy night?"], source: { kind: "dig", date: "2026-11-21" } }, dir);
+    return dir;
+  }
+
+  test("keeps every line and source, maps sections, removes the role, logs both", async () => {
+    const dir = await withBarJob();
+    const preview = await moveToPastLife("crown", { dryRun: true }, dir);
+    expect(preview).toMatchObject({ from: "roles/2012-06-the-crown.md", to: "past-lives/hospitality.md", merged: false, lines: 6, written: false });
+    await access(join(dir, "roles/2012-06-the-crown.md"));
+
+    const res = await moveToPastLife("crown", {}, dir);
+    expect(res.written).toBe(true);
+    expect(res.sections).toEqual([
+      { from: "What I owned", to: "What I did" },
+      { from: "Projects", to: "Projects" },
+      { from: "Achievements", to: "What I did" },
+      { from: "Hard moments", to: "Stories" },
+      { from: "Still to ask", to: "Still to ask" },
+    ]);
+    await expect(access(join(dir, "roles/2012-06-the-crown.md"))).rejects.toThrow();
+    const life = parseProfileFile("past-life", await readFile(join(dir, "past-lives/hospitality.md"), "utf8"));
+    expect(life.frontMatter).toMatchObject({ field: "Hospitality", roles: [{ title: "Bartender", employer: "The Crown", period: "2012-06 to 2014" }], skills: ["Cocktails"] });
+    const bullets = (h: string) => sectionBullets(findSection(life, h)!).map((b) => [b.text, b.source.kind, b.subheading]);
+    expect(bullets("What I did")).toEqual([["Ran the bar on Saturdays.", "cv", undefined], ["Takings up 20%.", "you", undefined]]);
+    expect(bullets("Projects")).toEqual([["Wrote the cocktail menu.", "dig", "New menu"]]);
+    expect(bullets("Stories")).toEqual([["A fight on New Year's Eve.", "dig", undefined]]);
+    expect(bullets("Still to ask")).toEqual([["How many covers on a busy night?", "dig", undefined]]);
+    expect((await readHistory(dir)).slice(-2).map((e) => [e.action, e.file, e.created, e.deleted])).toEqual([
+      ["move from roles/2012-06-the-crown.md", "past-lives/hospitality.md", true, false],
+      ["move to past-lives/hospitality.md", "roles/2012-06-the-crown.md", false, true],
+    ]);
+  });
+
+  test("two undos put it all back", async () => {
+    const dir = await withBarJob();
+    const before = await readFile(join(dir, "roles/2012-06-the-crown.md"), "utf8");
+    await moveToPastLife("crown", {}, dir);
+    await applyUndo(await planUndo(dir), dir);
+    expect(await readFile(join(dir, "roles/2012-06-the-crown.md"), "utf8")).toBe(before);
+    await applyUndo(await planUndo(dir), dir);
+    await expect(access(join(dir, "past-lives/hospitality.md"))).rejects.toThrow();
+  });
+
+  test("adds to a past life with the same field, and needs a field when there's no industry", async () => {
+    const dir = await withBarJob();
+    await createEntry("past-life", { field: "Hospitality", roles: [{ title: "Waiter" }] }, dir);
+    await addBullets("hospitality", { section: "What I did", subheading: "Weddings", texts: ["Served weddings of 200."], source: { kind: "dig", date: "2026-11-20" } }, dir);
+    const res = await moveToPastLife("crown", {}, dir);
+    expect(res.merged).toBe(true);
+    const life = parseProfileFile("past-life", await readFile(join(dir, "past-lives/hospitality.md"), "utf8"));
+    expect(life.frontMatter.roles.map((r) => r.title)).toEqual(["Waiter", "Bartender"]);
+    // plain lines go before the existing ### block, not inside it
+    expect(sectionBullets(findSection(life, "What I did")!).map((b) => [b.text, b.subheading])).toEqual([
+      ["Ran the bar on Saturdays.", undefined],
+      ["Takings up 20%.", undefined],
+      ["Served weddings of 200.", "Weddings"],
+    ]);
+
+    await createEntry("role", { employer: "Odd Jobs", positions: [{ title: "Helper", start: "2010" }] }, dir);
+    await expect(moveToPastLife("odd", {}, dir)).rejects.toThrow(/--field/);
+    await expect(moveToPastLife("hospitality", { field: "X" }, dir)).rejects.toThrow(ProfileError);
   });
 });

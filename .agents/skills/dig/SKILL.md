@@ -62,7 +62,11 @@ If they correct something already in the file (a wrong number, a word they would
 
 ## Past lives
 
-If they have no past lives (`pastLives` is empty), at a natural break ask what they did before this career, or alongside it: bar work, retail, trades, caring, the forces, anything. Imported roles that look like an earlier career are good prompts. For each one, `bun run ojs profile add past-life --field "…" [--title "…"] --json`, then dig the same way, especially:
-- **Transferable skills**, each with what happened that shows it.
-- **Stories:** the busy Saturday, the difficult customer, the thing they fixed.
-- **Trade knowledge:** what they know that most people don't.
+Finding and setting up past lives is the [past-lives skill](../past-lives/SKILL.md). If they have none yet, at a natural break offer to go through what they did before or alongside this career, and follow that skill.
+
+Digging into a past life works the same as a role, with its own headings: `What I did`, `Transferable skills`, `Stories`, `Trade knowledge`. Focus on:
+
+- **Transferable skills, each with proof.** A skill on its own is worth little ("good under pressure"). Pin each one to a moment that shows it ("ran the bar alone on New Year's Eve, 300 people, nobody waited more than a few minutes"). Ask "when did that happen?" until you have one. Write the skill and the moment as one line.
+- **Stories:** the busy Saturday, the difficult customer, the thing that went wrong and how they fixed it.
+- **Trade knowledge:** what they know that most people don't (how to price a job, read a room, fix an engine, calm someone down).
+- **Scale, loosely:** how many customers, covers, sites or people, as they remember it. Estimates as they say them.

@@ -82,6 +82,7 @@ const { values, positionals } = parseArgs({
     replace: { type: "string" },
     remove: { type: "boolean", default: false },
     limit: { type: "string" },
+    to: { type: "string" },
     source: { type: "string" },
     text: { type: "string", multiple: true },
     "dry-run": { type: "boolean", default: false },

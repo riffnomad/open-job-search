@@ -37,6 +37,7 @@ import {
   readProfileText,
   recordChange,
   correctProfile,
+  moveToPastLife,
   planUndo,
   applyUndo,
   readHistory,
@@ -71,6 +72,7 @@ export interface ProfileFlags {
   replace?: string;
   remove?: boolean;
   limit?: string;
+  to?: string;
 }
 
 type Out = (human: string, data: unknown) => void;
@@ -85,6 +87,9 @@ export const PROFILE_HELP = `Profile commands:
   profile edit [role]         Open in $EDITOR (no role: profile.yaml), then check it
   profile correct <role|profile> --find "exact text" (--replace "new text" | --remove) [--dry-run]
                               Change or remove something that's wrong. --remove deletes the whole line
+  profile move <role> --to past-life [--field "Hospitality"] [--dry-run]
+                              Turn a role into a past life (an earlier career), keeping every line.
+                              Adds to an existing past life with the same field
   profile history [role] [--limit n]   Every change to your profile, newest first
   profile undo [n] [--yes]    Reverse the latest change (or change #n). Shows it first; writes with --yes
   profile import [file]       Seed role files from a CV (PDF, DOCX, MD, TXT) using your AI provider.
@@ -271,6 +276,14 @@ function entryText(e: HistoryEntry): string {
   const changed = e.hunks.flatMap((h) => h.lines.filter((l) => l.op !== " ").map((l) => `    ${l.op} ${l.text}`));
   const more = changed.length > 6 ? [`    … ${changed.length - 6} more line${changed.length - 6 === 1 ? "" : "s"}`] : [];
   return [`#${e.n}  ${e.when}  ${e.action}  ${e.file}${e.created ? " (new file)" : e.deleted ? " (deleted)" : ""}`, ...changed.slice(0, 6), ...more].join("\n");
+}
+
+async function moveCmd(ref: string | undefined, f: ProfileFlags, out: Out): Promise<void> {
+  if (!ref || f.to !== "past-life") throw new ProfileError('usage: ojs profile move <role> --to past-life [--field "Hospitality"] [--dry-run]');
+  const res = await moveToPastLife(ref, { ...(f.field ? { field: f.field } : {}), dryRun: Boolean(f["dry-run"]) });
+  const where = res.sections.map((s) => (s.from === s.to ? `  ${s.from}` : `  ${s.from} → ${s.to}`)).join("\n");
+  const verb = res.written ? "Moved" : "Would move";
+  out(`${verb} ${res.from} to ${res.to}${res.merged ? " (adding to the past life already there)" : ""}: ${res.lines} line${res.lines === 1 ? "" : "s"}.\n${where}`, res);
 }
 
 async function historyCmd(ref: string | undefined, f: ProfileFlags, out: Out): Promise<void> {
@@ -524,6 +537,8 @@ export async function profileCommand(rest: string[], f: ProfileFlags, out: Out):
       return edit(args[0], f, out);
     case "correct":
       return correctCmd(args[0], f, out);
+    case "move":
+      return moveCmd(args[0], f, out);
     case "history":
       return historyCmd(args[0], f, out);
     case "undo":

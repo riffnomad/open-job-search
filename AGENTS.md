@@ -27,6 +27,7 @@ Run `bun run ojs <command> --json` and read the JSON. If `node_modules/` is miss
 | `profile history [role] --json` / `profile undo [n] [--yes] --json` | Every change, newest first. Undo previews unless `--yes` |
 | `profile add role --employer … --title … --start YYYY-MM\|YYYY [--end …] --json` | New role file |
 | `profile add past-life --field "…" [--title "…"] --json` | New past life |
+| `profile move <role> --to past-life [--field "…"] [--dry-run] --json` | Turn a role into a past life, keeping every line. Adds to an existing past life with the same field |
 
 When a role has more than one position (a promotion, a move to another team), say which one each line belongs to: `--as` in add-bullets, `position` in an extraction. It shows in the file as `[cv, as Team Lead]`.
 
@@ -40,6 +41,7 @@ The step-by-step workflows are skills in [`.agents/skills/`](.agents/skills/) (C
 |---|---|
 | [import-cv](.agents/skills/import-cv/SKILL.md) | "Set me up", "import my CV", first time in the repo, or `profile --json` shows `new` or `changed` documents. Settles anything uncertain by asking before it writes |
 | [dig](.agents/skills/dig/SKILL.md) | After an import, or "dig", "interview me", "grill me", "go deeper on <role>". One question at a time until each role has real depth |
+| [past-lives](.agents/skills/past-lives/SKILL.md) | Earlier careers and work outside their field: bar work, trades, caring, the forces. After an import or a dig, when they mention what they used to do, or when an imported role looks like an earlier career |
 
 In both: ask **one question per message**, in plain text, and show the exact lines before writing them.
 
