@@ -1,6 +1,6 @@
 ---
 name: flow
-description: The path through open-job-search, one step at a time, each finished before the next. The entry point whenever someone opens the repo, says "set me up", "let's start", "what's next", "carry on", or asks where they are. Checks progress with `ojs flow`, explains the steps, runs the current step's skills, and moves on only when the person is happy.
+description: The path through open-job-search, one step at a time, each finished before the next. The entry point whenever someone opens the repo, says "set me up", "let's start", "what's next", "carry on", asks where they are, or wants to work on someone else's search or another of their searches. Settles whose profile this is, checks progress with `ojs flow`, explains the steps, runs the current step's skills, and moves on only when the person is happy.
 ---
 
 # The flow
@@ -14,7 +14,17 @@ open-job-search works in steps. Each step is finished before the next one starts
 | 1. Your experience | Their CV, then everything it left out, role by role | [import-cv](../import-cv/SKILL.md), then [dig](../dig/SKILL.md) |
 | 2. Past lives | Other jobs, before or alongside their career, and what they gave them | [past-lives](../past-lives/SKILL.md), then [dig](../dig/SKILL.md) |
 
-More steps (preferences, discovery, evaluation, applications…) come later.
+More steps (preferences, discovery, evaluation, applications…) come later. Steps 1 and 2 are done once per person. Later steps are done for each **search** (what they're looking for, e.g. "software engineering" and "product management"), so starting a second search never repeats discovery.
+
+## Whose search is this
+
+One workspace can hold several people: someone may run their own search and a partner's. The one typing isn't always the person whose search it is.
+
+- **No one set up yet** (`ojs flow` errors with "no one is set up yet"): ask whose job search this is, and their name. Then `bun run ojs person add "<name>" --json`, and tell them where to put the CV: the `documents` path in the result.
+- **A profile from before people existed** (the error mentions `person migrate`): ask whose profile it is, then `bun run ojs person migrate "<name>" --json`. Nothing is lost; it's a move.
+- **More than one person** (`ojs person --json` lists several): every session, start by saying whose profile you're on ("We're working on Sam's search.") so they can switch. To switch: `bun run ojs person use <name> --json`.
+- **Running it for someone else**: ask the questions about that person ("What did Sam do at…?"), and take the answers from whoever is typing. Only what they know for sure goes in; anything they're guessing about the other person goes under "To confirm", or under "Still to ask" for when that person can answer.
+- Keep an eye on `workingOn` in every result. If it's not who you meant, stop and switch before writing anything. Never copy anything between people.
 
 ## Every session
 

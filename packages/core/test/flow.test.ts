@@ -9,8 +9,8 @@ const roots: string[] = [];
 async function workspace() {
   const root = await mkdtemp(join(tmpdir(), "ojs-flow-"));
   roots.push(root);
-  await mkdir(join(root, "documents"), { recursive: true });
-  return { data: join(root, "data"), profile: join(root, "data", "profile"), documents: join(root, "documents") };
+  await mkdir(join(root, "documents", "sam"), { recursive: true });
+  return { person: join(root, "data", "sam"), profile: join(root, "data", "sam", "profile"), documents: join(root, "documents", "sam") };
 }
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((r) => rm(r, { recursive: true, force: true })));
@@ -46,8 +46,8 @@ describe("flow", () => {
     const after1 = await markStepDone("1", { ...ws, now: new Date("2026-11-21T10:00:00Z") });
     expect(after1.current).toBe("past-lives");
     expect(after1.steps[0]).toMatchObject({ state: "done", doneAt: "2026-11-21T10:00:00.000Z" });
-    expect(JSON.parse(await readFile(join(ws.data, "flow.json"), "utf8"))).toEqual({ version: 1, done: { experience: "2026-11-21T10:00:00.000Z" } });
-    expect((await stat(join(ws.data, "flow.json"))).mode & 0o777).toBe(0o600);
+    expect(JSON.parse(await readFile(join(ws.person, "flow.json"), "utf8"))).toEqual({ version: 1, done: { experience: "2026-11-21T10:00:00.000Z" } });
+    expect((await stat(join(ws.person, "flow.json"))).mode & 0o777).toBe(0o600);
     await expect(markStepDone("experience", ws)).rejects.toThrow(/already done/);
 
     // No past lives is fine: the person decides.

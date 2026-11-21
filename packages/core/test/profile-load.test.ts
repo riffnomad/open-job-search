@@ -23,9 +23,7 @@ describe("profile.yaml", () => {
   test("an empty file is a valid, empty profile", () => {
     const p = parseProfileYaml("");
     expect(p.version).toBe(1);
-    expect(p.preferences.targetRoles).toEqual([]);
     expect(p.eligibility.workAuthorization).toEqual([]);
-    expect(p.positioning).toEqual([]);
   });
 
   test("reads the full synthetic profile with defaults filled", async () => {
@@ -34,9 +32,7 @@ describe("profile.yaml", () => {
     expect(p.languages[1]).toEqual({ language: "Spanish", level: "conversational" });
     expect(p.eligibility.workAuthorization.map((w) => w.status)).toEqual(["settled", "citizen"]);
     expect(p.eligibility.securityClearance[0]).toEqual({ country: "UK", level: "BPSS", active: true });
-    expect(p.positioning[0]!.theyBuy).toContain("money-moving");
-    expect(p.preferences.salary).toEqual({ min: 90000, target: 110000, currency: "GBP", period: "year" });
-    expect(p.preferences.industries).toEqual({ prefer: [], avoid: [] });
+    expect(p.eligibility.noticePeriod).toBe("3 months");
   });
 
   test("readable errors", () => {
@@ -59,8 +55,8 @@ describe("loadProfile", () => {
 
   test("loads yaml, roles newest first, past lives and writing samples", async () => {
     const root = await tempProfile();
-    const dir = join(root, "data", "profile");
-    const samples = join(root, "documents", "writing-samples");
+    const dir = join(root, "data", "sam", "profile");
+    const samples = join(root, "documents", "sam", "writing-samples");
     await mkdir(dir, { recursive: true });
     await mkdir(samples, { recursive: true });
     await copyFile(join(fixtures, "profile.yaml"), join(dir, "profile.yaml"));

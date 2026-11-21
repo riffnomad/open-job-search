@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
-import { join, basename } from "node:path";
+import { existsSync } from "node:fs";
+import { join, basename, relative } from "node:path";
 import { createInterface } from "node:readline/promises";
 import {
   addBullets,
@@ -13,6 +14,7 @@ import {
   extractText,
   addToDocuments,
   documentsDir,
+  workspaceRoot,
   listDocuments,
   markImported,
   sha256File,
@@ -272,7 +274,7 @@ async function correctCmd(ref: string | undefined, f: ProfileFlags, out: Out): P
   out(`${res.written ? "Changed" : "Would change"} ${res.file}:\n${show(res.before, "-")}\n${show(res.after, "+")}`, res);
 }
 
-function entryText(e: HistoryEntry): string {
+export function entryText(e: HistoryEntry): string {
   const changed = e.hunks.flatMap((h) => h.lines.filter((l) => l.op !== " ").map((l) => `    ${l.op} ${l.text}`));
   const more = changed.length > 6 ? [`    … ${changed.length - 6} more line${changed.length - 6 === 1 ? "" : "s"}`] : [];
   return [`#${e.n}  ${e.when}  ${e.action}  ${e.file}${e.created ? " (new file)" : e.deleted ? " (deleted)" : ""}`, ...changed.slice(0, 6), ...more].join("\n");
@@ -433,7 +435,7 @@ async function importOne(
 
   await applyImport(dir, plan, src.label);
   const rel = await recordSource(src);
-  const where = "path" in src.ref && rel !== basename(src.ref.path) ? ` Saved a copy as documents/${rel}.` : "path" in src.ref ? "" : ` Saved the text as documents/${rel}.`;
+  const where = "path" in src.ref && rel !== basename(src.ref.path) ? ` Saved a copy as ${docsLabel()}/${rel}.` : "path" in src.ref ? "" : ` Saved the text as ${docsLabel()}/${rel}.`;
   return { human: `${shown ? "" : summary + "\n\n"}Written.${where}`, data: data(true, { document: rel }) };
 }
 
@@ -477,7 +479,7 @@ async function importCmd(file: string | undefined, f: ProfileFlags, out: Out): P
   }
 
   if (file) {
-    const src = await readFileSource(file);
+    const src = await readFileSource(docFile(file), basename(file));
     const r = await importOne(src, f, await aiFor(), say);
     return out(r.human + (r.data.written ? "\nNext: `ojs profile gaps` to see what to dig into." : ""), r.data);
   }
@@ -486,7 +488,7 @@ async function importCmd(file: string | undefined, f: ProfileFlags, out: Out): P
   const docsDir = documentsDir();
   const pending = (await listDocuments(docsDir)).filter((d) => d.status !== "imported");
   if (pending.length === 0) {
-    return out(`Nothing new in documents/. Put your CV (PDF, Word, Markdown or text) in:\n  ${docsDir}\nthen run \`ojs profile import\` again. Or import a file directly: \`ojs profile import <file>\`.`, {
+    return out(`Nothing new in ${docsLabel()}/. Put your CV (PDF, Word, Markdown or text) in:\n  ${docsDir}\nthen run \`ojs profile import\` again. Or import a file directly: \`ojs profile import <file>\`.`, {
       documents: docsDir,
       results: [],
     });
@@ -510,9 +512,21 @@ async function importCmd(file: string | undefined, f: ProfileFlags, out: Out): P
   out(human.join("\n\n") + (wrote ? "\n\nNext: `ojs profile gaps` to see what to dig into." : ""), { documents: docsDir, results });
 }
 
+/** A file as given, or else by name in the person's documents folder ("cv.pdf"). */
+function docFile(file: string): string {
+  if (existsSync(file)) return file;
+  const inDocs = join(documentsDir(), file);
+  return existsSync(inDocs) ? inDocs : file;
+}
+
+/** documents/<person>, for messages. */
+function docsLabel(): string {
+  return relative(workspaceRoot(), documentsDir());
+}
+
 async function textCmd(file: string | undefined, out: Out): Promise<void> {
   if (!file) throw new ProfileError("usage: ojs profile text <file>");
-  const r = await extractText(file);
+  const r = await extractText(docFile(file));
   out(r.text, { file, method: r.method, ...(r.pages ? { pages: r.pages } : {}), warnings: r.warnings, text: r.text });
 }
 

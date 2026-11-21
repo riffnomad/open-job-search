@@ -6,9 +6,11 @@ If the person wants to change the tool itself rather than use it, follow [CONTRI
 
 ## Where things are
 
-- `documents/`: what the person puts in (CVs, references, `writing-samples/`). Theirs. Read it; don't move or delete anything.
-- `data/`: what the tool builds. `data/profile/` holds `profile.yaml`, `roles/*.md` (one file per job) and `past-lives/*.md` (earlier careers). See [data/README.md](data/README.md).
+- One workspace can hold **several people** (someone running their own search and a partner's, say), and each person can run **several searches** (software engineering and product management). Each person has a folder in both:
+- `documents/<person>/`: what they put in (CVs, references, `writing-samples/`). Theirs. Read it; don't move or delete anything.
+- `data/<person>/`: what the tool builds. `profile/` holds who they are: `profile.yaml`, `roles/*.md` (one file per job) and `past-lives/*.md` (earlier careers). `searches/<search>/search.yaml` holds what they're looking for. See [data/README.md](data/README.md).
 - Both folders are ignored by git. Never commit, push, or paste their contents anywhere outside this machine.
+- **Never mix people up.** Every `--json` output has `workingOn: {person, search}`. Check it's the person you mean to work on. Never copy anything from one person's files into another's.
 
 ## Tools
 
@@ -16,9 +18,13 @@ Run `bun run ojs <command> --json` and read the JSON. If `node_modules/` is miss
 
 | Command | Use |
 |---|---|
+| `person --json` / `person add <name>` / `person use <name>` | Who's set up and who we're working on; add someone (switches to them); switch |
+| `person migrate <name> --json` | A profile from before people existed (`data/profile/`): move it into that person's folders. Asked for by the error when it's needed |
+| `search --json` / `search add <name> [--role "…"]` / `search use <name>` | Their searches; start one (switches to it); switch |
+| `search show --json` / `search correct --find … (--replace … \| --remove)` / `search history` / `search undo [n] [--yes]` | What this search looks for; change it; its changes; undo |
 | `flow --json` / `flow done <step> --json` / `flow reopen <step> --json` | Which step they're on, what's there, what could be added; mark a step done when they're happy; go back to one |
 | `profile --json` | Overview: details, roles with depth and gap counts, documents with status (`new`, `changed`, `imported`) |
-| `profile text <file> --json` | Plain text of a CV (PDF, DOCX, MD, TXT). Use it even if you can read PDFs, so extraction is consistent |
+| `profile text <file> --json` | Plain text of a CV (PDF, DOCX, MD, TXT). A bare file name is looked up in their documents folder. Use it even if you can read PDFs, so extraction is consistent |
 | `profile schema --json` | Shape of an extraction for `import --extracted` |
 | `profile import <file> --extracted <json> --json [--dry-run \| --yes]` | Plan and write role files from your extraction. Shows what changes; writes only with `--yes` |
 | `profile gaps [role] --json` | What's missing per role: empty sections, projects with no outcome, no numbers, vague wording, unconfirmed guesses, open questions |
@@ -32,31 +38,35 @@ Run `bun run ojs <command> --json` and read the JSON. If `node_modules/` is miss
 
 When a role has more than one position (a promotion, a move to another team), say which one each line belongs to: `--as` in add-bullets, `position` in an extraction. It shows in the file as `[cv, as Team Lead]`.
 
+`--person <name>` and `--search <name>` work on any command, for that command only.
+
 `<role>` can be a file name (`2019-06-acme-logistics`) or part of the employer or field (`acme`). Sources: `cv`, `linkedin`, `dig` (things the person tells you), `you` (the person wrote it), `inferred` (your guesses; only allowed under "To confirm").
 
 ## The flow
 
-open-job-search goes step by step, and each step is finished before the next one starts. **Start every session with `bun run ojs flow --json`** and follow the [flow skill](.agents/skills/flow/SKILL.md): it says where the person is and what to do next.
+open-job-search goes step by step, and each step is finished before the next one starts. **Start every session with `bun run ojs flow --json`** and follow the [flow skill](.agents/skills/flow/SKILL.md): it says whose profile this is, where they are and what to do next.
 
 1. **Your experience:** their CV, then everything it left out, role by role.
 2. **Past lives:** other jobs they've had, and what those gave them.
 
-More steps come later. Steps 1 and 2 are discovery: learn everything about the person first; jobs, salary and locations come after. The person decides when a step is done (`ojs flow done <step>`); tell them the more they fill in, the better the roles we can find.
+More steps come later. Steps 1 and 2 are discovery, done once per person: learn everything about them first; jobs, salary and locations come after, in a search. Later steps are done per search, so a second search never repeats discovery. The person decides when a step is done (`ojs flow done <step>`); tell them the more they fill in, the better the roles we can find.
 
 The workflows are skills in [`.agents/skills/`](.agents/skills/) (Claude Code sees the same files through `.claude/skills/`). If your agent doesn't load skills by itself, read the `SKILL.md` and follow it.
 
 | Skill | When |
 |---|---|
-| [flow](.agents/skills/flow/SKILL.md) | Every session, "set me up", "what's next". Runs the steps in order |
+| [flow](.agents/skills/flow/SKILL.md) | Every session, "set me up", "what's next", "switch to …". Says who we're working on, runs the steps in order |
 | [import-cv](.agents/skills/import-cv/SKILL.md) | Step 1, and whenever there are `new` or `changed` documents. Settles anything uncertain by asking before it writes |
 | [dig](.agents/skills/dig/SKILL.md) | Steps 1 and 2, or "dig", "interview me", "grill me". One question at a time until each role or past life has real depth |
 | [past-lives](.agents/skills/past-lives/SKILL.md) | Step 2. Explains why other jobs matter, finds them, sets them up |
 
 In all of them: ask **one question per message**, in plain text, and show the exact lines before writing them.
 
-## Their details and preferences
+## Their details, and what they're looking for
 
-`data/profile/profile.yaml` holds their details, languages, education, eligibility (right to work, visa limits, clearance), and preferences (target roles, locations, salary floor, deal-breakers). When they tell you something, change it with `profile correct profile --find … --replace …`, keeping its comments and changing only what they told you.
+`profile.yaml` holds what's true of them whatever they apply for: details, languages, education, eligibility (right to work, visa limits, clearance, notice period). When they tell you something, change it with `profile correct profile --find … --replace …`, keeping its comments and changing only what they told you.
+
+What they're looking for (target roles, locations, salary floor, deal-breakers, the angle to lead with) belongs to a search, in `search.yaml`: change it with `search correct`. Different searches can want different things: a different salary, different locations.
 
 Role and past-life files: add through `add-bullets`; change or remove only through `profile correct`, and only when they ask. Never edit profile files directly: the tools log every change in `history.md` so it can be undone, and direct edits skip that.
 

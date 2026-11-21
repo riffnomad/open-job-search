@@ -5,8 +5,9 @@ import {
   ConfigError,
   ExtractError,
   configPath,
-  dataDir,
-  documentsDir,
+  dataRoot,
+  documentsRoot,
+  PersonError,
   detectProviders,
   loadConfig,
   ProfileError,
@@ -22,6 +23,7 @@ import {
 } from "@ojs/core";
 import pkg from "../package.json" with { type: "json" };
 import { FLOW_HELP, flowCommand } from "./flow.ts";
+import { PEOPLE_HELP, personCommand, searchCommand, workingOnSummary } from "./people.ts";
 import { PROFILE_HELP, profileCommand } from "./profile.ts";
 
 const HELP = `ojs: open-job-search
@@ -34,16 +36,21 @@ Commands:
   providers add <id>       Add or replace a provider (see options below)
   providers default <id>   Set the default provider
   ask <prompt>             Send a prompt to a provider (handy for testing a setup)
+  person                   Who we're working on; add or switch people (see below)
+  search                   Their job searches: what they're looking for (see below)
   flow                     Where you are in the steps, and what's next (see below)
-  profile                  Your profile: roles, past lives, preferences (see below)
+  profile                  Their profile: roles, past lives, details (see below)
   doctor                   Check your setup
   help                     Show this help
 
+${PEOPLE_HELP}
 ${FLOW_HELP}
 ${PROFILE_HELP}
 Global options:
   --json                   Machine-readable output (for scripts and AI agents)
   --provider <id>          Use this provider instead of the default
+  --person <name>          Work on this person, for this command only
+  --search <name>          Work on this search, for this command only
   -v, --version            Print the version
 
 providers add options:
@@ -54,7 +61,7 @@ providers add options:
   --preset <p>             For agent-cli: ${Object.keys(AGENT_CLI_PRESETS).join(", ")}, or custom
   --command <cmd>          For a custom agent-cli
 
-Your documents go in ${documentsDir()}, and what ojs builds goes in ${dataDir()}.
+Documents go in ${documentsRoot()}/<person>/, and what ojs builds goes in ${dataRoot()}/<person>/.
 Both are ignored by git. Override the location with OJS_ROOT.
 `;
 
@@ -63,6 +70,9 @@ const { values, positionals } = parseArgs({
   options: {
     json: { type: "boolean", default: false },
     provider: { type: "string" },
+    person: { type: "string" },
+    search: { type: "string" },
+    role: { type: "string", multiple: true },
     version: { type: "boolean", short: "v" },
     help: { type: "boolean", short: "h" },
     type: { type: "string" },
@@ -96,8 +106,17 @@ const { values, positionals } = parseArgs({
   },
 });
 
+// --person / --search apply to this command only; paths.ts reads them from the environment.
+if (values.person) process.env.OJS_PERSON = values.person;
+if (values.search) process.env.OJS_SEARCH = values.search;
+
+const PERSON_COMMANDS = new Set(["flow", "profile", "search"]);
+
 function out(human: string, data: unknown): void {
-  console.log(values.json ? JSON.stringify(data, null, 2) : human);
+  if (!values.json) return void console.log(human);
+  // Every command about a person says whose data it acted on, so an agent can't lose track.
+  const who = PERSON_COMMANDS.has(positionals[0] ?? "") && data && typeof data === "object" && !Array.isArray(data) ? workingOnSummary() : undefined;
+  console.log(JSON.stringify(who ? { workingOn: who, ...(data as object) } : data, null, 2));
 }
 
 async function init(): Promise<void> {
@@ -224,6 +243,10 @@ async function main(): Promise<void> {
       return providers(rest[0], rest[1]);
     case "ask":
       return ask(rest.join(" ") || undefined);
+    case "person":
+      return personCommand(rest, out);
+    case "search":
+      return searchCommand(rest, values, out);
     case "flow":
       return flowCommand(rest, out);
     case "profile":
@@ -236,7 +259,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  const known = [ConfigError, ProviderError, ProfileError, ProfileFileError, ProfileLoadError, ExtractError, UndoError, FlowError].some((E) => err instanceof E);
+  const known = [ConfigError, ProviderError, ProfileError, ProfileFileError, ProfileLoadError, ExtractError, UndoError, FlowError, PersonError].some((E) => err instanceof E);
   const message = known ? (err as Error).message : String((err as Error)?.stack ?? err);
   if (values.json) console.log(JSON.stringify({ error: message }));
   else console.error(`ojs: ${message}`);

@@ -26,7 +26,7 @@ cd open-job-search
 bun install
 ```
 
-Put your CV (PDF, Word, Markdown or text) in [`documents/`](documents/README.md), then open your agent in the repo and ask it to set you up:
+Open your agent in the repo and ask it to set you up. It asks your name, makes you a folder in [`documents/`](documents/README.md) for your CV (PDF, Word, Markdown or text), and takes it from there:
 
 ```bash
 claude        # or codex, agy, opencode
@@ -38,16 +38,18 @@ It works step by step, and you decide when each step is done:
 1. **Your experience.** It reads your CV, asks about anything it isn't sure of before saving, then interviews you role by role to get down everything your CV left out.
 2. **Past lives.** Other jobs you've had, before or alongside your career, and the skills and stories they gave you.
 
-Then come your preferences, finding roles, and applying. The more you tell it in the first steps, the better the roles it finds. `bun run ojs flow` shows where you are. The workflows are plain-text skills in [`.agents/skills/`](.agents/skills/).
+Then come your searches (what you're looking for), finding roles, and applying. The more you tell it in the first steps, the better the roles it finds. `bun run ojs flow` shows where you are. The workflows are plain-text skills in [`.agents/skills/`](.agents/skills/).
 
 ## Your files
 
 Two folders hold everything personal. Both are ignored by git, so nothing you add ever ends up in the public repo:
 
 - [`documents/`](documents/README.md): what you put in. CVs, references, writing samples.
-- [`data/`](data/README.md): what the tool builds. Your profile (`data/profile/`), settings, cache.
+- [`data/`](data/README.md): what the tool builds. Your profile, your searches, settings, cache.
 
 Your profile is plain Markdown and YAML. Read it, edit it, back it up.
+
+**More than one person, more than one search.** Running the search for someone else as well? Add them (`ojs person add <name>`): each person has their own folders, and the agent always says whose profile it's working on. And one person can run several searches at once, say software engineering and product management (`ojs search add <name>`). Who you are is learnt once and shared; each search has its own target roles, locations, salary and angle.
 
 ## Commands
 
@@ -56,8 +58,10 @@ Your agent runs these for you, but you can too. Every command takes `--json`.
 ```bash
 bun run ojs init                    # find your agent CLIs and set one as default
 bun run ojs flow                    # where you are in the steps, and what's next
+bun run ojs person add "Sam"        # set up someone else; `ojs person use <name>` to switch
+bun run ojs search add "Product management"   # start another search; `ojs search use <name>` to switch
 bun run ojs profile                 # overview of your profile
-bun run ojs profile import          # import new files in documents/ (shows changes, asks first)
+bun run ojs profile import          # import new files in your documents folder (shows changes, asks first)
 bun run ojs profile gaps            # what's missing in each role
 bun run ojs profile edit [role]     # open in your editor, checked when you save
 bun run ojs help                    # everything else
@@ -87,7 +91,7 @@ bun run ojs providers add anthropic --type anthropic --model claude-opus-5-5 --a
 ## Roadmap
 
 1. **Foundation**: provider layer, config, tools, web and worker skeletons ✅
-2. **Profile**: CV import ✅, then interviews that deepen each role, past lives, preferences, LinkedIn export
+2. **Profile**: CV import ✅, then interviews that deepen each role, past lives, people and searches ✅, LinkedIn export
 3. **Discovery**: company job boards (Greenhouse, Lever, Ashby, Workable), UK sources (Adzuna, Reed), remote boards; dedup and liveness checks
 4. **Evaluation**: structured fit scoring with reasons and hard blockers (visa sponsorship, location, level)
 5. **Warm paths**: match roles to your network and draft referral asks

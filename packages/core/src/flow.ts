@@ -3,15 +3,17 @@
  * marked done before the next one starts; the person decides when a step is
  * done (the tool only refuses when there's nothing there at all).
  *
- * Progress is kept in data/flow.json, so a new session, or a different
- * agent, carries on where the last one stopped.
+ * Progress is kept per person (data/<person>/flow.json), so a new session,
+ * or a different agent, carries on where the last one stopped. Steps about
+ * a search (scope "search") are kept in that search's own flow.json: a
+ * second search starts those steps afresh, and never repeats discovery.
  *
  * Steps 1 and 2 are discovery: learn as much as possible about the person
  * before looking at any job.
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { dataDir, documentsDir, profileDir } from "./paths.ts";
+import { documentsDir, personDir } from "./paths.ts";
 import { findGaps } from "./profile/gaps.ts";
 import { listDocuments } from "./profile/import.ts";
 import { loadProfile } from "./profile/load.ts";
@@ -27,6 +29,8 @@ export interface FlowStepInfo {
   about: string;
   /** The skills an agent follows for this step, in .agents/skills/. */
   skills: string[];
+  /** "person": done once per person. "search": done for each of their searches. */
+  scope: "person" | "search";
 }
 
 export const FLOW_STEPS: readonly FlowStepInfo[] = [
@@ -36,6 +40,7 @@ export const FLOW_STEPS: readonly FlowStepInfo[] = [
     title: "Your experience",
     about: "Your CV, then everything it left out: role by role, projects, results, hard moments, stories.",
     skills: ["import-cv", "dig"],
+    scope: "person",
   },
   {
     id: "past-lives",
@@ -43,6 +48,7 @@ export const FLOW_STEPS: readonly FlowStepInfo[] = [
     title: "Past lives",
     about: "Other jobs you've had, before or alongside your career, and the skills and stories they gave you.",
     skills: ["past-lives", "dig"],
+    scope: "person",
   },
 ] as const;
 
@@ -97,12 +103,26 @@ async function writeState(dir: string, state: FlowState): Promise<void> {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
+export interface FlowOptions {
+  /** The person's folder, data/<person>/. Defaults to the active person. */
+  person?: string;
+  /** Defaults to <person>/profile. */
+  profile?: string;
+  /** Defaults to the active person's documents/<person>/. */
+  documents?: string;
+  /** The active search's folder, or null when they have none yet. Only read by search steps. */
+  search?: string | null;
+}
+
 /** Where the person is, and what each step has so far. */
-export async function flowStatus(opts: { data?: string; profile?: string; documents?: string } = {}): Promise<FlowStatus> {
-  const data = opts.data ?? dataDir();
-  const profDir = opts.profile ?? (opts.data ? join(data, "profile") : profileDir());
-  const docsDir = opts.documents ?? (opts.data ? join(data, "..", "documents") : documentsDir());
-  const state = await readState(data);
+export async function flowStatus(opts: FlowOptions = {}): Promise<FlowStatus> {
+  const person = opts.person ?? personDir();
+  const profDir = opts.profile ?? join(person, "profile");
+  const docsDir = opts.documents ?? documentsDir();
+  const states = {
+    person: await readState(person),
+    search: opts.search ? await readState(opts.search) : ({ version: 1, done: {} } as FlowState),
+  };
   const profile = await loadProfile(profDir);
   const docs = await listDocuments(docsDir, profDir);
 
@@ -140,7 +160,8 @@ export async function flowStatus(opts: { data?: string; profile?: string; docume
       if (stillToAsk) suggestions.push(`${plural(stillToAsk, "question")} saved under "Still to ask"`);
     }
 
-    const doneAt = state.done[info.id];
+    if (info.scope === "search" && !opts.search) blockers.push("Needs a search first: `ojs search add <name>`.");
+    const doneAt = states[info.scope].done[info.id];
     let stepState: FlowStepStatus["state"];
     if (doneAt) stepState = "done";
     else if (!current) {
@@ -161,27 +182,33 @@ function findStep(id: string): FlowStepInfo {
 }
 
 /** Mark the current step done, when the person says so. Steps go in order. */
-export async function markStepDone(id: string, opts: { data?: string; profile?: string; documents?: string; now?: Date } = {}): Promise<FlowStatus> {
-  const data = opts.data ?? dataDir();
+export async function markStepDone(id: string, opts: FlowOptions & { now?: Date } = {}): Promise<FlowStatus> {
+  const person = opts.person ?? personDir();
   const step = findStep(id);
-  const status = await flowStatus({ ...opts, data });
+  const status = await flowStatus({ ...opts, person });
   const s = status.steps.find((x) => x.id === step.id)!;
   if (s.state === "done") throw new FlowError(`step ${s.n} (${s.title}) is already done.`);
   if (s.state === "locked") throw new FlowError(s.blockers.join(" "));
   if (s.blockers.length) throw new FlowError(`step ${s.n} (${s.title}) can't be marked done yet: ${s.blockers.join(" ")}`);
-  const state = await readState(data);
+  const dir = step.scope === "search" ? opts.search! : person;
+  const state = await readState(dir);
   state.done[step.id] = (opts.now ?? new Date()).toISOString();
-  await writeState(data, state);
-  return flowStatus({ ...opts, data });
+  await writeState(dir, state);
+  return flowStatus({ ...opts, person });
 }
 
 /** Go back to a step: it and every step after it become not done. */
-export async function reopenStep(id: string, opts: { data?: string } = {}): Promise<string[]> {
-  const data = opts.data ?? dataDir();
+export async function reopenStep(id: string, opts: { person?: string; search?: string | null } = {}): Promise<string[]> {
   const step = findStep(id);
-  const state = await readState(data);
-  const reopened = FLOW_STEPS.filter((s) => s.n >= step.n && state.done[s.id]).map((s) => s.id);
-  for (const r of reopened) delete state.done[r];
-  await writeState(data, state);
+  const reopened: string[] = [];
+  for (const [scope, dir] of [["person", opts.person ?? personDir()], ["search", opts.search]] as const) {
+    if (!dir) continue;
+    const state = await readState(dir);
+    const ids = FLOW_STEPS.filter((s) => s.scope === scope && s.n >= step.n && state.done[s.id]).map((s) => s.id);
+    if (!ids.length) continue;
+    for (const r of ids) delete state.done[r];
+    await writeState(dir, state);
+    reopened.push(...ids);
+  }
   return reopened;
 }

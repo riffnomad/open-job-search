@@ -22,14 +22,4 @@ eligibility:
     - { kind: start-date, note: Three months' notice, until: 2027-02 }
   securityClearance:
     - { country: UK, level: BPSS }
-positioning:
-  - name: Backend engineer
-    targetTitles: [Senior Backend Engineer, Staff Engineer]
-    theyBuy: Someone who keeps money-moving systems correct under load
-    leadWith: [Acme route planning, on-call]
-preferences:
-  targetRoles: [Senior Backend Engineer]
-  locations: [London, Remote (UK)]
-  workMode: [remote, hybrid]
-  salary: { min: 90000, target: 110000 }
-  dealBreakers: [No gambling companies]
+  noticePeriod: 3 months

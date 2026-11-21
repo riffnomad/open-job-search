@@ -1,8 +1,10 @@
 # documents/
 
-Put your own documents here. Everything in this folder except this README is ignored by git, so it never ends up in the public repo.
+Put your own documents here, in a folder with your name (`documents/<you>/`). Everything in this folder except this README is ignored by git, so it never ends up in the public repo.
 
-What to put here:
+Running the search for someone else too? They get their own folder: `documents/<them>/`. Your agent sets it up when you add them (`ojs person add <name>`).
+
+What to put in your folder:
 
 - **Your CV**, as PDF, Word (.docx), Markdown or plain text. Older CVs are welcome too: they often mention things your current one dropped.
 - **Your LinkedIn data export** (coming soon): LinkedIn → Settings → Data privacy → Get a copy of your data.

@@ -8,13 +8,22 @@ const home = await mkdtemp(join(tmpdir(), "ojs-cli-"));
 afterAll(() => rm(home, { recursive: true, force: true }));
 const entry = join(import.meta.dir, "../src/index.ts");
 
-function ojs(...args: string[]): { code: number; json: any; stderr: string } {
+/** `workingOn` (whose data a command acted on) is split out so tests can compare the rest exactly. */
+function ojs(...args: string[]): { code: number; json: any; workingOn: any; stderr: string } {
   const p = Bun.spawnSync(["bun", entry, ...args, "--json"], { env: { ...process.env, OJS_ROOT: home } });
   const stdout = p.stdout.toString();
-  return { code: p.exitCode, json: stdout.trim() ? JSON.parse(stdout) : undefined, stderr: p.stderr.toString() };
+  const { workingOn, ...json } = stdout.trim() ? JSON.parse(stdout) : {};
+  return { code: p.exitCode, json: stdout.trim() ? json : undefined, workingOn, stderr: p.stderr.toString() };
 }
 
 describe("ojs profile --json", () => {
+  test("no one set up yet: a clear error", () => {
+    const r = ojs("profile");
+    expect(r.code).toBe(1);
+    expect(r.json.error).toMatch(/ojs person add/);
+    expect(ojs("person", "add", "Riley").json).toMatchObject({ person: { id: "riley", name: "Riley", active: true } });
+  });
+
   test("empty profile", () => {
     const r = ojs("profile");
     expect(r.code).toBe(0);
@@ -100,7 +109,7 @@ describe("ojs profile import (documents/)", () => {
   test("imports new files in documents/, remembers them, leaves files in place", async () => {
     const { writeFile, readdir, mkdir } = await import("node:fs/promises");
     // Uses the "fake" provider added by the previous test, and the same OJS_ROOT.
-    const docs = join(home, "documents");
+    const docs = join(home, "documents", "riley");
     await mkdir(docs, { recursive: true });
     // riley.md was copied in by the previous test and is already imported.
     expect(ojs("profile").json.documents).toEqual([{ file: "riley.md", status: "imported" }]);
@@ -120,7 +129,7 @@ describe("ojs profile import (documents/)", () => {
     const run = ojs("profile", "import", "--provider", "fake", "--yes").json;
     expect(run.results[0]).toMatchObject({ source: "cv-copy.md", written: false, files: [] }); // nothing new in it
     expect(run.results[1]).toMatchObject({ source: "photo.jpg", written: false, error: expect.stringMatching(/image/) });
-    expect((await readdir(docs)).sort()).toEqual(["cv-copy.md", "photo.jpg", "riley.md"]);
+    expect((await readdir(docs)).sort()).toEqual(["cv-copy.md", "photo.jpg", "riley.md", "writing-samples"]);
     expect(ojs("profile").json.documents.map((d: { file: string; status: string }) => `${d.file}:${d.status}`)).toEqual([
       "cv-copy.md:imported",
       "photo.jpg:new",
@@ -184,5 +193,46 @@ describe("ojs flow --json", () => {
     expect(ojs("flow", "done", "past-lives").json.error).toMatch(/Step 1 comes first/);
     expect(ojs("flow", "done", "experience").json.current).toBe("past-lives");
     expect(ojs("flow", "reopen", "1").json.reopened).toEqual(["experience"]);
+  });
+});
+
+describe("people and searches --json", () => {
+  test("a second person, searches, and --person / --search", async () => {
+    const { readFile } = await import("node:fs/promises");
+    expect(ojs("profile").workingOn).toEqual({ person: "riley", search: null });
+
+    // Riley runs two searches; the newest becomes active.
+    expect(ojs("search", "add", "Software engineering", "--role", "Backend engineer").json.search).toMatchObject({ id: "software-engineering", active: true, targetRoles: ["Backend engineer"] });
+    expect(ojs("search", "add", "Product management").json.search.id).toBe("product-management");
+    expect(ojs("search").json.searches.map((s: any) => [s.id, s.active])).toEqual([["product-management", true], ["software-engineering", false]]);
+    expect(ojs("search", "use", "software-engineering").workingOn).toEqual({ person: "riley", search: "software-engineering" });
+
+    // search.yaml changes go through correct, with their own history and undo.
+    const fixed = ojs("search", "correct", "--find", "locations: []", "--replace", "locations: [London]");
+    expect(fixed.json).toMatchObject({ file: "search.yaml", written: true });
+    expect(ojs("search", "show").json.search.locations).toEqual(["London"]);
+    expect(ojs("search", "history").json.entries.map((e: any) => e.action)).toEqual(["correct", "create"]);
+    expect(ojs("search", "undo", "--yes").json.written).toBe(true);
+    expect(ojs("search", "show").json.search.locations).toEqual([]);
+    expect(ojs("search", "correct", "--find", "name:", "--replace", "nom:").json.error).toMatch(/would break search.yaml/);
+
+    // A second person: their own profile, untouched by Riley's.
+    expect(ojs("person", "add", "Sam Lee").json.person).toMatchObject({ id: "sam-lee", active: true });
+    expect(ojs("profile").json.roles).toEqual([]);
+    expect(ojs("profile").workingOn).toEqual({ person: "sam-lee", search: null });
+    expect(ojs("search", "show").json.error).toMatch(/no job search yet/);
+    // --person works for one command without switching.
+    expect(ojs("profile", "--person", "riley").json.roles.length).toBeGreaterThan(0);
+    expect(ojs("profile").workingOn.person).toBe("sam-lee");
+    expect(ojs("profile", "--person", "nobody").json.error).toMatch(/no one called "nobody"/);
+    expect(ojs("profile", "--person", "riley", "--search", "product-management").workingOn).toEqual({ person: "riley", search: "product-management" });
+
+    expect(ojs("person").json.people.map((p: any) => [p.id, p.active, p.searches])).toEqual([
+      ["riley", false, ["product-management", "software-engineering"]],
+      ["sam-lee", true, []],
+    ]);
+    const active = JSON.parse(await readFile(join(home, "data", "active.json"), "utf8"));
+    expect(active).toEqual({ version: 1, person: "sam-lee", search: { riley: "software-engineering" } });
+    expect(ojs("person", "use", "riley").json.person.id).toBe("riley");
   });
 });

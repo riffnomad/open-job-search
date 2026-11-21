@@ -6,13 +6,10 @@ dist/
 .env.*
 !.env.example
 
-# Your stuff: documents/ (what you put in) and data/ (what ojs builds).
-# Never committed, apart from the READMEs that explain them.
+# Your stuff: documents/ (what you put in) and data/ (what ojs builds),
+# one folder per person in each. Never committed, apart from the READMEs.
 /documents/*
 !/documents/README.md
-!/documents/writing-samples/
-/documents/writing-samples/*
-!/documents/writing-samples/README.md
 /data/*
 !/data/README.md
 

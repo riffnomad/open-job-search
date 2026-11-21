@@ -1,4 +1,5 @@
 import { flowStatus, FlowError, markStepDone, reopenStep, type FlowStatus } from "@ojs/core";
+import { workingOn, type WorkingOn } from "./people.ts";
 
 type Out = (human: string, data: unknown) => void;
 
@@ -8,8 +9,8 @@ export const FLOW_HELP = `Flow (the path through open-job-search, one step at a 
   flow reopen <step>          Go back to a step (it and the steps after it are no longer done)
 `;
 
-function render(status: FlowStatus): string {
-  const lines: string[] = [];
+function render(status: FlowStatus, who: WorkingOn): string {
+  const lines: string[] = [`Working on: ${who.person.name}${who.search ? `, search "${who.search.name}"` : ""}`, ""];
   for (const s of status.steps) {
     const mark = s.state === "done" ? "✓" : s.state === "current" ? "→" : " ";
     lines.push(`${mark} ${s.n}. ${s.title}${s.state === "done" ? "" : s.state === "current" ? "  (you are here)" : ""}`, `     ${s.about}`);
@@ -28,21 +29,23 @@ function render(status: FlowStatus): string {
 
 export async function flowCommand(rest: string[], out: Out): Promise<void> {
   const [sub, arg] = rest;
+  const who = await workingOn();
+  const opts = { search: who.searchDir };
   switch (sub) {
     case undefined: {
-      const status = await flowStatus();
-      return out(render(status), status);
+      const status = await flowStatus(opts);
+      return out(render(status, who), status);
     }
     case "done": {
       if (!arg) throw new FlowError("usage: ojs flow done <step>");
-      const status = await markStepDone(arg);
-      return out(`Done.\n\n${render(status)}`, status);
+      const status = await markStepDone(arg, opts);
+      return out(`Done.\n\n${render(status, who)}`, status);
     }
     case "reopen": {
       if (!arg) throw new FlowError("usage: ojs flow reopen <step>");
-      const reopened = await reopenStep(arg);
-      const status = await flowStatus();
-      return out(`${reopened.length ? `Reopened: ${reopened.join(", ")}.` : "Nothing to reopen."}\n\n${render(status)}`, { reopened, ...status });
+      const reopened = await reopenStep(arg, opts);
+      const status = await flowStatus(opts);
+      return out(`${reopened.length ? `Reopened: ${reopened.join(", ")}.` : "Nothing to reopen."}\n\n${render(status, who)}`, { reopened, ...status });
     }
     default:
       throw new FlowError(`unknown subcommand "flow ${sub}". Run \`ojs help\`.`);

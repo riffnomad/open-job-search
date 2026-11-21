@@ -13,9 +13,11 @@ packages/
   web/      Local web app (Bun.serve, 127.0.0.1 only). Thin layer over core.
   worker/   Scheduled jobs and notifications. Thin layer over core.
 .agents/skills/  Workflows the agent follows (flow, import-cv, dig, past-lives). .claude/skills links here.
-documents/  The user's own files. Ignored by git except its README.
-data/       What the tool builds for the user. Ignored by git except its README.
+documents/  The user's own files, one folder per person. Ignored by git except its README.
+data/       What the tool builds: config, then one folder per person (profile, searches). Ignored by git except its README.
 ```
+
+Several people can share a workspace, and each can run several searches. Never build a path into `documents/` or `data/` by hand: use `paths.ts` (`profileDir()`, `documentsDir()`, `searchDir()`…), which resolves the active person and search (`--person`/`--search`, then `data/active.json`, then the only one there is). What's true of the person whatever they apply for goes in their profile; what they're looking for goes in a search.
 
 ## Rules
 

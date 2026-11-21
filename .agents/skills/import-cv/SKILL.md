@@ -12,11 +12,11 @@ Follow the **Facts, not polish** rules in [AGENTS.md](../../../AGENTS.md) throug
 ## 1. Find the documents
 
 Run `bun run ojs profile --json`. Work through each document whose status is `new` or `changed`, one at a time.
-No documents: ask them to put their CV in `documents/` (older CVs too, they often mention things the new one dropped), or to paste it. Save a pasted CV as `documents/<name>.txt` and use that.
+No documents: ask them to put their CV in their documents folder, `documents/<person>/` (older CVs too, they often mention things the new one dropped), or to paste it. Save a pasted CV as `documents/<person>/<name>.txt` and use that.
 
 ## 2. Read and extract
 
-1. `bun run ojs profile text documents/<file> --json` for the text. Use it even if you can read the file yourself, so every agent works from the same text.
+1. `bun run ojs profile text <file> --json` (the file name from `ojs profile --json`; it's looked up in their documents folder) for the text. Use it even if you can read the file yourself, so every agent works from the same text.
 2. `bun run ojs profile schema --json` for the shape.
 3. Extract into that shape:
    - Every job, including ones outside their main field. Earlier careers (bar work, retail, a trade) still go in as roles; in step 2 the [past-lives skill](../past-lives/SKILL.md) offers to move them. Don't raise that now.
@@ -48,8 +48,8 @@ Don't dig for depth here. Collect anything interesting they mention in passing f
 
 ## 4. Preview, then write
 
-1. Save the extraction as `data/cache/extracted-<file>.json`.
-2. `bun run ojs profile import documents/<file> --extracted data/cache/extracted-<file>.json --dry-run --json`
+1. Save the extraction as `data/<person>/cache/extracted-<file>.json`.
+2. `bun run ojs profile import <file> --extracted data/<person>/cache/extracted-<file>.json --dry-run --json`
 3. Tell them in plain words: which files will be created or added to, how many lines each, what goes into `profile.yaml`, and what's still to confirm. Offer to show any file in full.
 4. On a yes, run the same command with `--yes` instead of `--dry-run`.
 5. Add the new facts from step 3 with `bun run ojs profile add-bullets <role> --section "<heading>" --source dig --text "…" --json`, showing them the lines first.

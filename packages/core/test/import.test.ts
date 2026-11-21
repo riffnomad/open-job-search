@@ -158,6 +158,8 @@ describe("extractCv", () => {
 
   test("caches by provider and text", async () => {
     const home = await temp();
+    await mkdir(join(home, "data", "sam"), { recursive: true });
+    await writeFile(join(home, "data", "sam", "person.json"), '{"version":1,"name":"Sam"}');
     let calls = 0;
     const fake: LLMProvider = { id: "fake", kind: "api", async generateText() { calls++; return JSON.stringify(extracted); } };
     expect((await extractCvCached(fake, "cv text", { OJS_ROOT: home })).cached).toBe(false);

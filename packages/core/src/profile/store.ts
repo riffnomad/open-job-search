@@ -8,7 +8,8 @@
  */
 import { access, mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { profileDir } from "../paths.ts";
+import { profileDir, SEARCH_FILE } from "../paths.ts";
+import { parseSearchYaml } from "../search.ts";
 import {
   loadProfile,
   parseProfileYaml,
@@ -72,7 +73,6 @@ async function readOrNull(path: string): Promise<string | null> {
  * Returns the history entry number, or undefined if nothing changed.
  */
 export async function writeProfileText(dir: string, rel: string, text: string, action: string): Promise<number | undefined> {
-  await ensureProfileDirs(dir);
   const path = join(dir, rel);
   const before = await readOrNull(path);
   if (before === text) return undefined;
@@ -209,7 +209,7 @@ export async function addBullets(ref: string, opts: AddBulletsOptions, dir = pro
 }
 
 /** profile.yaml for a new profile, with comments explaining each part. */
-export const PROFILE_YAML_TEMPLATE = `# Your profile: the short, structured part.
+export const PROFILE_YAML_TEMPLATE = `# Your profile: the short, structured part. True whatever you apply for.
 # Your experience lives in roles/ and past-lives/ next to this file, one file each.
 # Everything here is optional. \`ojs profile review\` shows what's missing.
 version: 1
@@ -232,18 +232,10 @@ eligibility:
   workAuthorization: []   # - { country: UK, status: settled }   citizen | settled | visa | needs-sponsorship
   constraints: []         # limits on hours or start date: - { kind: hours, note: "20h/week in term time", until: 2027-06 }
   securityClearance: []   # - { country: UK, level: SC }
+  noticePeriod:           # e.g. "1 month", "immediately"
 
-positioning: []      # optional angles: - { name: ..., targetTitles: [...], theyBuy: ..., leadWith: [...] }
-
-preferences:
-  targetRoles: []
-  seniority:
-  locations: []      # e.g. [London, Remote (UK)]
-  workMode: []       # remote | hybrid | onsite
-  salary:            # { min: 60000, target: 70000, currency: GBP, period: year }
-  noticePeriod:
-  dealBreakers: []
-  industries: { prefer: [], avoid: [] }
+# What you're looking for (roles, locations, salary) lives in each search:
+# data/<you>/searches/<search>/search.yaml. See \`ojs search\`.
 `;
 
 /** Path of a profile file, creating profile.yaml from the template if needed. */
@@ -285,6 +277,7 @@ export async function readProfileText(dir: string, rel: string): Promise<string>
 /** Check a profile file's text parses, by what kind of file it is. Throws with the problem. */
 export function checkProfileText(rel: string, text: string): void {
   if (rel === PROFILE_FILE) parseProfileYaml(text, rel);
+  else if (rel === SEARCH_FILE) parseSearchYaml(text, rel);
   else if (rel.startsWith(`${ROLES_DIR}/`)) parseProfileFile("role", text, rel);
   else if (rel.startsWith(`${PAST_LIVES_DIR}/`)) parseProfileFile("past-life", text, rel);
   else throw new ProfileError(`${rel} isn't a profile file`);
@@ -310,10 +303,11 @@ export interface CorrectResult {
 /**
  * Change or remove something the person says is wrong. The only way to change
  * existing lines (add-bullets only appends). Logged as "correct".
- * `ref` is a role or past life, or "profile" / "profile.yaml".
+ * `ref` is a role or past life, or "profile" / "profile.yaml"; or "search" /
+ * "search.yaml" with `dir` a search's folder.
  */
 export async function correctProfile(ref: string, opts: CorrectOptions, dir = profileDir()): Promise<CorrectResult> {
-  const rel = /^profile(\.ya?ml)?$/i.test(ref) ? PROFILE_FILE : await findEntryFile(ref, dir);
+  const rel = /^profile(\.ya?ml)?$/i.test(ref) ? PROFILE_FILE : /^search(\.ya?ml)?$/i.test(ref) ? SEARCH_FILE : await findEntryFile(ref, dir);
   const text = await readOrNull(join(dir, rel));
   if (text === null) throw new ProfileError(`${rel} doesn't exist yet`);
   if (!opts.find) throw new ProfileError("--find is required: the exact text to change");

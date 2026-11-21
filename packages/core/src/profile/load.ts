@@ -1,8 +1,8 @@
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { parse as parseYaml, YAMLParseError } from "yaml";
 import { z } from "zod";
-import { profileDir } from "../paths.ts";
+import { profileDir, writingSamplesDir } from "../paths.ts";
 import { dropNulls, parseProfileFile, ProfileFileError, type PastLifeFile, type RoleFile } from "./role-file.ts";
 import { ProfileData } from "./schema.ts";
 
@@ -43,11 +43,13 @@ export function parseProfileYaml(text: string, file = PROFILE_FILE): ProfileData
 }
 
 /**
- * Load the profile from data/profile/. Writing samples are documents the
- * user puts in, so they're read from documents/writing-samples/ (by default
- * the documents/ folder next to data/).
+ * Load a person's profile from data/<person>/profile/. Writing samples are
+ * documents they put in, so they're read from documents/<person>/writing-samples/.
  */
-export async function loadProfile(dir = profileDir(), samplesDir = join(dir, "..", "..", "documents", "writing-samples")): Promise<Profile> {
+export async function loadProfile(dirArg?: string, samplesArg?: string): Promise<Profile> {
+  const dir = dirArg ?? profileDir();
+  const samplesDir =
+    samplesArg ?? (dirArg === undefined ? writingSamplesDir() : join(dir, "..", "..", "..", "documents", basename(dirname(dir)), "writing-samples"));
   const problems: string[] = [];
 
   let data = ProfileData.parse({});

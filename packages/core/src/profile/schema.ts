@@ -4,6 +4,9 @@
  *
  * Everything has a default so a new or half-filled profile still loads;
  * `reviewProfile` (later) tells the user what's missing.
+ *
+ * Only what's true of the person whatever they apply for. What they're
+ * looking for (roles, locations, salary) belongs to a search: search.ts.
  */
 import { z } from "zod";
 import { PartialDate } from "./dates.ts";
@@ -59,39 +62,8 @@ export const Eligibility = z.object({
       }),
     )
     .default([]),
-});
-
-/**
- * An angle the user can present: the same experience, framed for a kind of
- * role. Optional. Tailoring (step 6) uses it to choose what to lead with.
- */
-export const Positioning = z.object({
-  name: z.string().min(1), // "Backend / platform engineer"
-  targetTitles: z.array(z.string()).default([]),
-  /** What an employer hiring for this is really buying. */
-  theyBuy: z.string().optional(),
-  /** Role files, projects or skills to lead with, in the user's words. */
-  leadWith: z.array(z.string()).default([]),
-});
-
-export const Preferences = z.object({
-  targetRoles: z.array(z.string()).default([]),
-  seniority: z.string().optional(),
-  locations: z.array(z.string()).default([]), // "London", "UK", "Remote (UK)"
-  workMode: z.array(z.enum(["remote", "hybrid", "onsite"])).default([]),
-  salary: z
-    .object({
-      min: z.number().positive(),
-      target: z.number().positive().optional(),
-      currency: z.string().length(3).default("GBP"),
-      period: z.enum(["year", "day", "hour"]).default("year"),
-    })
-    .optional(),
+  /** How long before they can start a new job, in their words: "1 month", "immediately". */
   noticePeriod: z.string().optional(),
-  dealBreakers: z.array(z.string()).default([]), // hard blockers in step 4
-  industries: z
-    .object({ prefer: z.array(z.string()).default([]), avoid: z.array(z.string()).default([]) })
-    .default({ prefer: [], avoid: [] }),
 });
 
 export const ProfileData = z.object({
@@ -115,7 +87,5 @@ export const ProfileData = z.object({
     .default([]),
   gaps: z.array(z.object({ start: yearMonth, end: yearMonth.optional(), note: z.string().optional() })).default([]),
   eligibility: Eligibility.default({ workAuthorization: [], constraints: [], securityClearance: [] }),
-  positioning: z.array(Positioning).default([]),
-  preferences: Preferences.default({ targetRoles: [], locations: [], workMode: [], dealBreakers: [], industries: { prefer: [], avoid: [] } }),
 });
 export type ProfileData = z.infer<typeof ProfileData>;
