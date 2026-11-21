@@ -45,6 +45,12 @@ bun run web          # local web app
 
 One folder per skill in `.agents/skills/<name>/SKILL.md`, with `name` and `description` front matter (the description is what makes agents pick it up). Keep skills agent-neutral: plain steps that call `bun run ojs … --json`. No logic that belongs in core, and no tool names specific to one agent. Add a row for it in the skills table in AGENTS.md. If it's a new step, add it to `FLOW_STEPS` in `packages/core/src/flow.ts` and the flow skill.
 
+## Adding a job source
+
+Hiring systems (ATS) live in `packages/core/src/jobs/sources/`, one file each, implementing `BoardSource` from `jobs/source.ts`: read any company's public board on that system, given the board's name or a link, and return jobs in the `Job` shape (`jobs/job.ts`). Leave out what the source doesn't say; never guess. Register it in `BOARD_SOURCES` (`jobs/index.ts`) and test it with a made-up board and a fake `fetch` (see `greenhouse.test.ts`).
+
+Rules for sources: no module for a single company's careers site; only documented or public endpoints a site's terms allow; use `getJson` (it sends our User-Agent, times out, and words errors plainly).
+
 ## Adding an agent CLI preset
 
 Add it to `AGENT_CLI_PRESETS` in `packages/core/src/llm/providers/agent-cli.ts`. Set `verified: true` only after running `bun run ojs ask "Reply with exactly: OK" --provider <id>` against the real CLI.

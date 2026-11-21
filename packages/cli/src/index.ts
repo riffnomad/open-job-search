@@ -16,6 +16,7 @@ import {
   ProviderConfig,
   ProviderError,
   FlowError,
+  SourceError,
   UndoError,
   resolveProvider,
   saveConfig,
@@ -23,6 +24,7 @@ import {
 } from "@ojs/core";
 import pkg from "../package.json" with { type: "json" };
 import { FLOW_HELP, flowCommand } from "./flow.ts";
+import { JOBS_HELP, jobsCommand } from "./jobs.ts";
 import { PEOPLE_HELP, personCommand, searchCommand, workingOnSummary } from "./people.ts";
 import { PREFS_HELP, prefsCommand } from "./prefs.ts";
 import { PRIVACY_HELP, privacyCommand } from "./privacy.ts";
@@ -43,6 +45,7 @@ Commands:
   prefs                    What they want from a job: work, pay, deal-breakers, priorities (see below)
   flow                     Where you are in the steps, and what's next (see below)
   profile                  Their profile: roles, past lives, details (see below)
+  jobs                     Fetch job ads from hiring systems (see below)
   doctor                   Check your setup
   help                     Show this help
 
@@ -50,6 +53,7 @@ ${PEOPLE_HELP}
 ${PREFS_HELP}
 ${FLOW_HELP}
 ${PROFILE_HELP}
+${JOBS_HELP}
 ${PRIVACY_HELP}
 Global options:
   --json                   Machine-readable output (for scripts and AI agents)
@@ -114,6 +118,8 @@ const { values, positionals } = parseArgs({
     source: { type: "string" },
     text: { type: "string", multiple: true },
     "dry-run": { type: "boolean", default: false },
+    all: { type: "boolean", default: false },
+    full: { type: "boolean", default: false },
     paste: { type: "boolean", default: false },
     extracted: { type: "string" },
     yes: { type: "boolean", short: "y", default: false },
@@ -269,6 +275,8 @@ async function main(): Promise<void> {
       return profileCommand(rest, values, out);
     case "privacy":
       return privacyCommand(rest, values, out);
+    case "jobs":
+      return jobsCommand(rest, values, out);
     case "doctor":
       return doctor();
     default:
@@ -277,7 +285,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  const known = [ConfigError, ProviderError, ProfileError, ProfileFileError, ProfileLoadError, ExtractError, UndoError, FlowError, PersonError].some((E) => err instanceof E);
+  const known = [ConfigError, ProviderError, ProfileError, ProfileFileError, ProfileLoadError, ExtractError, UndoError, FlowError, PersonError, SourceError].some((E) => err instanceof E);
   const message = known ? (err as Error).message : String((err as Error)?.stack ?? err);
   if (values.json) console.log(JSON.stringify({ error: message }));
   else console.error(`ojs: ${message}`);
