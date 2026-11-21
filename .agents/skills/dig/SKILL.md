@@ -46,7 +46,9 @@ After every answer, or every two or three short ones:
 1. Turn what they said into bullets in their words. Don't polish, don't upgrade ("helped with" stays "helped with").
 2. Put each under the right heading: `Context`, `What I owned`, `Projects` (with `--sub "<project>"`), `Achievements`, `Hard moments`, `People and leadership`, `Skills in depth`, `Stories`.
 3. Show the exact lines, then on their OK (a quick "yes", or carrying on, is enough once they've seen the pattern) write them:
-   `bun run ojs profile add-bullets <role> --section "<heading>" [--sub "<project>"] --source dig --text "…" [--text "…"] --json`
+   `bun run ojs profile add-bullets <role> --section "<heading>" [--sub "<project>"] [--as "<position>"] --source dig --text "…" [--text "…"] --json`
+
+   If the role has several positions and it's not obvious which one an answer is about, ask, and pass it with `--as`.
 
 Never lose an answer: write before moving to the next role or stopping.
 

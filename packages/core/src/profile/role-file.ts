@@ -126,6 +126,8 @@ export interface Bullet {
   source: Source;
   /** The `### ` heading the bullet sits under, if any (e.g. a project name). */
   subheading?: string;
+  /** Which position at this employer the bullet belongs to, when the role has several. Written as `[cv, as <title>]`. */
+  position?: string;
 }
 
 export class ProfileFileError extends Error {
@@ -142,7 +144,7 @@ const FENCE = /^\s*(```|~~~)/;
 const H2 = /^## +(.+?)\s*#*\s*$/;
 const H3 = /^### +(.+?)\s*#*\s*$/;
 const BULLET = /^[-*+] +(.*)$/;
-const TAG = /\s*\[(cv|linkedin|you|dig (\d{4}-\d{2}-\d{2})|inferred from ([^\]]+))\]\s*$/;
+const TAG = /\s*\[(cv|linkedin|you|dig (\d{4}-\d{2}-\d{2})|inferred from ([^\]]+?))(?:, as ([^\]]+))?\]\s*$/;
 
 export function parseProfileFile(kind: "role", text: string, file?: string): RoleFile;
 export function parseProfileFile(kind: "past-life", text: string, file?: string): PastLifeFile;
@@ -236,6 +238,28 @@ export function parseSource(tag: string | undefined): Source {
   return tag ? sourceFromMatch(TAG.exec(` [${tag}]`)) : { kind: "you" };
 }
 
+/**
+ * Find the position a bullet belongs to, by title: exact match (ignoring case
+ * and spacing) first, then a title that contains `ref`, if only one does.
+ * Returns the title as written in the front matter, or undefined.
+ */
+export function matchPosition(titles: string[], ref: string): string | undefined {
+  const n = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
+  const want = n(ref);
+  if (!want) return undefined;
+  const exact = titles.find((t) => n(t) === want);
+  if (exact) return exact;
+  const partial = titles.filter((t) => n(t).includes(want));
+  return partial.length === 1 ? partial[0] : undefined;
+}
+
+/** The tag at the end of a bullet: the source, plus the position when there is one. */
+export function formatTag(source: Source, position?: string): string {
+  const tag = formatSource(source);
+  const pos = position?.replace(/[\[\]]/g, "").replace(/\s+/g, " ").trim();
+  return pos ? `${tag.slice(0, -1)}, as ${pos}]` : tag;
+}
+
 export function formatSource(source: Source): string {
   switch (source.kind) {
     case "dig":
@@ -261,7 +285,8 @@ export function sectionBullets(section: Section): Bullet[] {
     const m = TAG.exec(joined);
     const text = m ? joined.slice(0, m.index).trim() : joined;
     const source = sourceFromMatch(m);
-    if (text) bullets.push({ text, source, ...(currentSub ? { subheading: currentSub } : {}) });
+    const position = m?.[4]?.trim();
+    if (text) bullets.push({ text, source, ...(currentSub ? { subheading: currentSub } : {}), ...(position ? { position } : {}) });
     current = undefined;
   };
 
@@ -291,10 +316,10 @@ export function sectionBullets(section: Section): Bullet[] {
   return bullets;
 }
 
-function bulletLine(b: { text: string; source: Source }): string {
+function bulletLine(b: { text: string; source: Source; position?: string }): string {
   const text = b.text.replace(/\s+/g, " ").trim().replace(TAG, "");
   if (!text) throw new Error("bullet text is empty");
-  return `- ${text} ${formatSource(b.source)}`;
+  return `- ${text} ${formatTag(b.source, b.position)}`;
 }
 
 /**
@@ -305,7 +330,7 @@ function bulletLine(b: { text: string; source: Source }): string {
 export function appendBullets<D extends ProfileFile<unknown>>(
   doc: D,
   heading: string,
-  bullets: { text: string; source: Source }[],
+  bullets: { text: string; source: Source; position?: string }[],
   opts: { subheading?: string } = {},
 ): D {
   if (bullets.length === 0) return doc;

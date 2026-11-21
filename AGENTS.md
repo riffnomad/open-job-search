@@ -22,9 +22,11 @@ Run `bun run ojs <command> --json` and read the JSON. If `node_modules/` is miss
 | `profile import <file> --extracted <json> --json [--dry-run \| --yes]` | Plan and write role files from your extraction. Shows what changes; writes only with `--yes` |
 | `profile gaps [role] --json` | What's missing per role: empty sections, projects with no outcome, no numbers, vague wording, unconfirmed guesses, open questions |
 | `profile show <role> --json` | One role or past life in full, every bullet with its source |
-| `profile add-bullets <role> --section <heading> [--sub <project>] --source <s> --text "…" [--text "…"] [--dry-run] --json` | The only way to add experience. Appends, keeps a copy first, checks the file |
+| `profile add-bullets <role> --section <heading> [--sub <project>] [--as <position>] --source <s> --text "…" [--text "…"] [--dry-run] --json` | The only way to add experience. Appends, keeps a copy first, checks the file. `--as` says which position at that employer it belongs to (a title or part of one) |
 | `profile add role --employer … --title … --start YYYY-MM\|YYYY [--end …] --json` | New role file |
 | `profile add past-life --field "…" [--title "…"] --json` | New past life |
+
+When a role has more than one position (a promotion, a move to another team), say which one each line belongs to: `--as` in add-bullets, `position` in an extraction. It shows in the file as `[cv, as Team Lead]`.
 
 `<role>` can be a file name (`2019-06-acme-logistics`) or part of the employer or field (`acme`). Sources: `cv`, `linkedin`, `dig` (things the person tells you), `you` (the person wrote it), `inferred` (your guesses; only allowed under "To confirm").
 

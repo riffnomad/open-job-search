@@ -57,6 +57,7 @@ export interface ProfileFlags {
   "front-matter"?: string;
   section?: string;
   sub?: string;
+  as?: string;
   source?: string;
   text?: string[];
   "dry-run"?: boolean;
@@ -69,7 +70,7 @@ export const PROFILE_HELP = `Profile commands:
   profile gaps [role]         What's missing: outcomes, numbers, hard moments, open questions
   profile add role            New role file: --employer --title --start YYYY-MM [--end] [--type] [--location] [--industry]
   profile add past-life       New past life: --field "Hospitality" [--title "Bartender"]
-  profile add-bullets <role>  Append to a role: --section <heading> [--sub <project>] --source <s> --text "..." [--text ...] [--dry-run]
+  profile add-bullets <role>  Append to a role: --section <heading> [--sub <project>] [--as <position>] --source <s> --text "..." [--text ...] [--dry-run]
                               sources: cv | linkedin | dig | you | inferred (inferred only under "To confirm")
   profile edit [role]         Open in $EDITOR (no role: profile.yaml), then check it
   profile import [file]       Seed role files from a CV (PDF, DOCX, MD, TXT) using your AI provider.
@@ -231,6 +232,7 @@ async function addBulletsCmd(ref: string | undefined, f: ProfileFlags, out: Out)
   const res = await addBullets(ref, {
     section: f.section,
     ...(f.sub ? { subheading: f.sub } : {}),
+    ...(f.as ? { position: f.as } : {}),
     texts: f.text ?? [],
     source: sourceFrom(f.source),
     dryRun: Boolean(f["dry-run"]),

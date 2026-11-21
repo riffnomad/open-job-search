@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { findGaps } from "../src/profile/gaps.ts";
+import { findGaps, skillShown } from "../src/profile/gaps.ts";
 import { loadProfile, parseProfileYaml } from "../src/profile/load.ts";
 import { newProfileFile, parseProfileFile } from "../src/profile/role-file.ts";
 import { addBullets, createEntry, ensureProfileYaml, findEntryFile, PROFILE_YAML_TEMPLATE, ProfileError, resolveEntry } from "../src/profile/store.ts";
@@ -154,7 +154,7 @@ describe("findGaps", () => {
 
   test("vague wording and no numbers; years don't count as numbers", () => {
     let doc = newProfileFile("role", { employer: "X", positions: [{ title: "T", start: "2020-01" }], type: "full-time", skills: [] });
-    doc = { ...doc, sections: doc.sections.map((s) => (s.heading === "What I owned" ? { ...s, raw: "- Worked on the billing system in 2021.\n- Responsible for releases.\n" } : s)) };
+    doc = { ...doc, sections: doc.sections.map((s) => (s.heading === "What I owned" ? { ...s, raw: "- Worked on the billing system in 2021.\n- Responsible for releases.\n- Helped the people made redundant with references, stayed in touch with them, and more.\n" } : s)) };
     const { gaps, depth } = findGaps(doc);
     expect(depth.bulletsWithNumbers).toBe(0);
     expect(gaps.filter((g) => g.kind === "vague-wording").map((g) => g.detail)).toEqual(["Worked on the billing system in 2021.", "Responsible for releases."]);
@@ -164,5 +164,36 @@ describe("findGaps", () => {
   test("past lives use their own sections", () => {
     const { gaps } = findGaps(newProfileFile("past-life", { field: "Hospitality", roles: [] }));
     expect(gaps.map((g) => g.section)).toEqual(["What I did", "Transferable skills", "Stories", "Trade knowledge"]);
+  });
+
+  test("a skill counts if any part of it shows: SAML / SSO, Anthropic/Claude, Stripe integration", () => {
+    const body = "Added single sign-on (SAML) to the app. Switched the team to Claude. Built an integration with Stripe.";
+    expect(skillShown("SAML / SSO", body)).toBe(true);
+    expect(skillShown("Anthropic/Claude", body)).toBe(true);
+    expect(skillShown("Stripe integration", body)).toBe(true);
+    expect(skillShown("Kafka", body)).toBe(false);
+    expect(skillShown("Go", "Going well")).toBe(false);
+    expect(skillShown("C++", "Wrote C++ daily")).toBe(true);
+  });
+
+  test("outcomes in plain words count", () => {
+    let doc = newProfileFile("role", { employer: "X", positions: [{ title: "T", start: "2020-01" }], skills: [] });
+    const raw = "### Route planning\n- Used by every depot now.\n\n### Warehouse app\n- Shipped the scanner, after the pilot.\n";
+    doc = { ...doc, sections: doc.sections.map((s) => (s.heading === "Projects" ? { ...s, raw } : s)) };
+    const missing = findGaps(doc).gaps.filter((g) => g.kind === "project-without-outcome").map((g) => g.subheading);
+    expect(missing).toEqual(["Warehouse app"]);
+  });
+});
+
+
+describe("addBullets with a position", () => {
+  test("matches part of a title, tags the line, and rejects unknown positions", async () => {
+    const dir = await temp();
+    await createEntry("role", { employer: "Acme", positions: [{ title: "Engineer", start: "2019-01" }, { title: "Team Lead, Payments", start: "2021-01" }] }, dir);
+    const res = await addBullets("acme", { section: "What I owned", texts: ["Ran the team."], source: { kind: "dig", date: "2026-11-21" }, position: "team lead" }, dir);
+    expect(res.position).toBe("Team Lead, Payments");
+    expect(res.lines).toEqual(["- Ran the team. [dig 2026-11-21, as Team Lead, Payments]"]);
+    expect(await readFile(join(dir, res.file), "utf8")).toContain("- Ran the team. [dig 2026-11-21, as Team Lead, Payments]");
+    expect(addBullets("acme", { section: "What I owned", texts: ["x"], source: { kind: "cv" }, position: "CTO" }, dir)).rejects.toThrow(ProfileError);
   });
 });

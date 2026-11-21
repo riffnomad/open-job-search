@@ -76,6 +76,7 @@ const { values, positionals } = parseArgs({
     "front-matter": { type: "string" },
     section: { type: "string" },
     sub: { type: "string" },
+    as: { type: "string" },
     source: { type: "string" },
     text: { type: "string", multiple: true },
     "dry-run": { type: "boolean", default: false },

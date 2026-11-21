@@ -19,7 +19,8 @@ import {
 } from "./load.ts";
 import {
   appendBullets,
-  formatSource,
+  formatTag,
+  matchPosition,
   newProfileFile,
   parseProfileFile,
   pastLifeFileName,
@@ -137,6 +138,8 @@ export interface AddBulletsOptions {
   subheading?: string;
   texts: string[];
   source: Source;
+  /** Which position (role) or past-life role the bullets belong to: a title, or part of one. */
+  position?: string;
   /** Return what would change without writing. */
   dryRun?: boolean;
 }
@@ -145,6 +148,8 @@ export interface AddBulletsResult {
   file: string;
   section: string;
   subheading?: string;
+  /** The position title as written in the file, when one was given. */
+  position?: string;
   lines: string[];
   written: boolean;
 }
@@ -165,16 +170,30 @@ export async function addBullets(ref: string, opts: AddBulletsOptions, dir = pro
 
   const profile = await loadProfile(dir);
   const entry = resolveEntry(profile, ref);
-  const bullets = texts.map((text) => ({ text, source: opts.source }));
+  let position: string | undefined;
+  if (opts.position?.trim()) {
+    const titles =
+      entry.kind === "role"
+        ? (entry.doc as RoleFile).frontMatter.positions.map((p) => p.title)
+        : (entry.doc as PastLifeFile).frontMatter.roles.map((r) => r.title);
+    position = matchPosition(titles, opts.position);
+    if (!position) {
+      throw new ProfileError(
+        `no single position in ${entry.file} matches "${opts.position}". Positions: ${titles.map((t) => `"${t}"`).join(", ") || "(none)"}`,
+      );
+    }
+  }
+  const bullets = texts.map((text) => ({ text, source: opts.source, ...(position ? { position } : {}) }));
   const updated = appendBullets(entry.doc, opts.section, bullets, { subheading: opts.subheading });
   const text = renderProfileFile(updated);
   parseProfileFile(entry.kind as "role", text, entry.file); // never write what we can't read back
 
-  const lines = texts.map((t) => `- ${t} ${formatSource(opts.source)}`);
+  const lines = texts.map((t) => `- ${t} ${formatTag(opts.source, position)}`);
   const result: AddBulletsResult = {
     file: entry.file,
     section: opts.section,
     ...(opts.subheading ? { subheading: opts.subheading } : {}),
+    ...(position ? { position } : {}),
     lines,
     written: false,
   };

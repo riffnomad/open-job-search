@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   appendBullets,
   findSection,
+  matchPosition,
   newProfileFile,
   parseProfileFile,
   parseSource,
@@ -174,5 +175,48 @@ describe("templates and names", () => {
     const text = renderProfileFile(withFrontMatter(doc, { ...doc.frontMatter, industry: "parcel delivery" }));
     expect(text).toContain("industry: parcel delivery");
     expect(text.slice(text.indexOf("\n---\n"))).toBe(fixture.slice(fixture.indexOf("\n---\n")));
+  });
+});
+
+describe("positions on bullets", () => {
+  const text = `---
+employer: Acme
+positions:
+  - title: Software Engineer
+    start: 2019-06
+  - title: Team Lead, Payments
+    start: 2021-03
+---
+
+## What I owned
+- Ran the payments team. [cv, as Team Lead, Payments]
+- Shipped the API. [dig 2026-11-21, as Software Engineer]
+- Guessed thing. [inferred from cv, as Team Lead, Payments]
+- No position. [cv]
+`;
+  test("parses the position from the tag and round-trips", () => {
+    const doc = parseProfileFile("role", text);
+    expect(renderProfileFile(doc)).toBe(text);
+    const bs = sectionBullets(findSection(doc, "What I owned")!);
+    expect(bs.map((b) => [b.text, b.source.kind, b.position])).toEqual([
+      ["Ran the payments team.", "cv", "Team Lead, Payments"],
+      ["Shipped the API.", "dig", "Software Engineer"],
+      ["Guessed thing.", "inferred", "Team Lead, Payments"],
+      ["No position.", "cv", undefined],
+    ]);
+    expect(bs[2]!.source).toEqual({ kind: "inferred", from: "cv" });
+  });
+
+  test("writes the position into the tag", () => {
+    const doc = appendBullets(parseProfileFile("role", text), "Achievements", [{ text: "Won a thing.", source: { kind: "cv" }, position: "Software Engineer" }]);
+    expect(renderProfileFile(doc)).toContain("- Won a thing. [cv, as Software Engineer]");
+  });
+
+  test("matchPosition: exact, then a unique partial match", () => {
+    const titles = ["Software Engineer", "Senior Software Engineer", "Team Lead, Payments"];
+    expect(matchPosition(titles, "software engineer")).toBe("Software Engineer");
+    expect(matchPosition(titles, "team lead")).toBe("Team Lead, Payments");
+    expect(matchPosition(titles, "engineer")).toBeUndefined();
+    expect(matchPosition(titles, "CTO")).toBeUndefined();
   });
 });

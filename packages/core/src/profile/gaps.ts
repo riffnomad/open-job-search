@@ -44,9 +44,27 @@ const PAST_LIFE_CORE = ["What I did", "Transferable skills", "Stories", "Trade k
 const META = new Set(["to confirm", "still to ask"]);
 
 const VAGUE = /^(worked on|helped( with| to)?|responsible for|involved in|assisted( with)?|participated in|contributed to|exposure to|duties included)\b/i;
-const OUTCOME = /\b(outcome|result|impact|so that|which meant|led to|saved|cut|reduced|increased|grew|improved)\b/i;
+// Words that usually mean something changed because of the work. A plain check, so it errs towards finding an outcome.
+const OUTCOME =
+  /\b(outcomes?|results?(ed|ing)?|impact|so that|which meant|meaning|led to|now|no longer|any more|anymore|saved|saving|cut|reduced|reducing|decreased?|drop(ped)?|fewer|less|lower(ed)?|faster|quicker|increased?|grew|growth|improved?|uplift|boost(ed)?|replac(ed|ing)|removed|eliminated|automated|adopted|went live|is live|live|launched|enabled|unblocked|won|from \S+ to)\b/i;
 // A number that isn't just a year on its own.
 const NUMBER = /(\d+(\.\d+)?\s?(%|k|m|x|×|hours?|hrs?|days?|weeks?|minutes?|mins?|people|users|customers|£|\$|€))|([£$€]\s?\d)|(\b(?!(19|20)\d{2}\b)\d+(\.\d+)?\b)/i;
+
+/**
+ * Is a skill mentioned in the text? "SAML / SSO" counts if either SAML or SSO
+ * appears; "Stripe integration" counts if Stripe does. Whole words only.
+ */
+export function skillShown(skill: string, text: string): boolean {
+  const lower = text.toLowerCase();
+  const word = (w: string) => new RegExp(`(^|[^a-z0-9])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z0-9])`).test(lower);
+  const whole = skill.toLowerCase().replace(/\s+/g, " ").trim();
+  if (word(whole)) return true;
+  const parts = whole.split(/\s*[\/,()&+]\s*|\s+(?:and|or)\s+/).map((p) => p.trim()).filter((p) => p.length > 1);
+  if (parts.length > 1 && parts.some(word)) return true;
+  // "Stripe integration": the first word is usually the thing itself.
+  const first = whole.split(" ")[0]!;
+  return whole.includes(" ") && first.length > 3 && !/^\d/.test(first) && word(first);
+}
 
 function bulletsIn(doc: RoleFile | PastLifeFile, heading: string): Bullet[] {
   const s = findSection(doc, heading);
@@ -96,7 +114,8 @@ export function findGaps(doc: RoleFile | PastLifeFile): GapReport {
   }
 
   for (const b of bankBullets) {
-    if (VAGUE.test(b.text)) {
+    // A vague opener is only a gap when nothing specific follows it.
+    if (VAGUE.test(b.text) && b.text.split(/\s+/).length < 12) {
       gaps.push({
         kind: "vague-wording",
         section: b.section,
@@ -110,7 +129,7 @@ export function findGaps(doc: RoleFile | PastLifeFile): GapReport {
   if (isRole) {
     const body = doc.sections.filter((s) => !META.has(s.heading.trim().toLowerCase())).map((s) => s.raw).join("\n").toLowerCase();
     for (const skill of doc.frontMatter.skills) {
-      if (!body.includes(skill.toLowerCase())) {
+      if (!skillShown(skill, body)) {
         gaps.push({ kind: "skill-not-shown", detail: skill, message: `${skill} is listed but never shown in use.` });
       }
     }

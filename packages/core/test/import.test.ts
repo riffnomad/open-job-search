@@ -208,3 +208,25 @@ describe("documents/", () => {
     expect(await addToDocuments(docs, { text: "pasted", name: "pasted-cv" }, now)).toBe("pasted-cv-2026-11-20.txt");
   });
 });
+
+describe("positions on imported lines", () => {
+  test("lines carry the position they were listed under; unknown titles are dropped quietly", async () => {
+    const dir = await temp();
+    const ex: ExtractedCv = {
+      ...extracted,
+      roles: [
+        {
+          ...extracted.roles[0]!,
+          owned: [{ text: "Route planning service.", position: "Senior Software Engineer" }, "No position here."],
+          projects: [{ name: "Depot dashboard", bullets: [{ text: "Built the first dashboard.", position: "software engineer" }, { text: "Odd one.", position: "CTO" }] }],
+        },
+      ],
+    };
+    const plan = planImport(await loadProfile(dir), ex, cv);
+    const text = plan.files[0]!.text;
+    expect(text).toContain("- Route planning service. [cv, as Senior Software Engineer]");
+    expect(text).toContain("- No position here. [cv]");
+    expect(text).toContain("- Built the first dashboard. [cv, as Software Engineer]");
+    expect(text).toContain("- Odd one. [cv]");
+  });
+});

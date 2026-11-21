@@ -21,7 +21,7 @@ No documents: ask them to put their CV in `documents/` (older CVs too, they ofte
 3. Extract into that shape:
    - Every job, including ones outside their main field. Earlier careers (bar work, retail, a trade) still go in; you'll offer to treat them as past lives later.
    - The CV's own wording. One CV bullet stays one bullet. Numbers exactly as written. Dates as written.
-   - Several positions at one employer go in one role, with every position listed.
+   - Several positions at one employer go in one role, with every position listed. Give each line the position it's listed under: `{ "text": "…", "position": "<title as in positions>" }`.
    - Set `type` only when the document says it.
 4. While extracting, keep a list of **open points**: anything you'd otherwise have to guess. Typically:
    - a job with no title, or a missing or unclear date
