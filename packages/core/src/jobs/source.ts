@@ -23,8 +23,12 @@ export interface BoardSource {
   name: string;
   /** What to pass: shown in help and errors. */
   boardHint: string;
-  /** The board's name from a link to it, or a bare name. Undefined when it isn't one of this source's. */
-  parseBoard(input: string): string | undefined;
+  /**
+   * The board's name from a link to it, or a bare name. Undefined when it isn't one of this source's.
+   * `named` is set when the person named this source (ojs jobs fetch teamtailor <board>), so a source
+   * whose boards can live on any domain may accept a link it couldn't claim among all the sources.
+   */
+  parseBoard(input: string, opts?: { named?: boolean }): string | undefined;
   fetchBoard(board: string, opts?: FetchOptions): Promise<BoardResult>;
 }
 

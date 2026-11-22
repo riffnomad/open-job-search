@@ -140,7 +140,7 @@ async function fetchCommand(args: string[], f: Flags, out: Out): Promise<void> {
   if (BOARD_SOURCES[first.toLowerCase()]) {
     source = boardSource(first);
     if (!second) throw new SourceError(`which board? Give ${source.boardHint}.`);
-    board = source.parseBoard(second);
+    board = source.parseBoard(second, { named: true });
     if (!board) throw new SourceError(`"${second}" isn't a ${source.name} board. Give ${source.boardHint}.`);
   } else {
     const hit = sourceForLink(first);
