@@ -27,3 +27,16 @@ describe("job board helpers", () => {
     expect(calls).toBe(2);
   });
 });
+
+describe("getJson headers", () => {
+  test("adds a source's headers to ours", async () => {
+    const { getJson, USER_AGENT } = await import("../src/index.ts");
+    let seen: Record<string, string> = {};
+    const f = (async (_: string | URL | Request, init?: RequestInit) => {
+      seen = init?.headers as Record<string, string>;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+    await getJson("https://acme.example/api", "Acme", { fetch: f }, { authorization: "Basic abc" });
+    expect(seen).toMatchObject({ "user-agent": USER_AGENT, accept: "application/json", authorization: "Basic abc" });
+  });
+});

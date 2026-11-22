@@ -99,9 +99,14 @@ export class SourceError extends Error {
 /** Says who we are, so a site can see the traffic and reach the project. No personal details. */
 export const USER_AGENT = "open-job-search (+https://github.com/riffnomad/open-job-search)";
 
-/** GET JSON, with a timeout and errors in plain words. 404 comes back as null. */
-export function getJson(url: string, what: string, opts: FetchOptions = {}): Promise<unknown | null> {
-  return requestJson(url, what, opts);
+/**
+ * GET JSON, with a timeout and errors in plain words. 404 comes back as null.
+ * `headers` are for APIs that take a key in a header. They're added to ours, and
+ * never appear in an error message. Replacing our user-agent is only for an API
+ * that demands it, with a value the person chose (USAJOBS wants their email).
+ */
+export function getJson(url: string, what: string, opts: FetchOptions = {}, headers?: Record<string, string>): Promise<unknown | null> {
+  return requestJson(url, what, opts, headers ? { headers } : {});
 }
 
 /** Replies kept by getJsonOnce, per fetch function (tests each bring their own) and URL. */

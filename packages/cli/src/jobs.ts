@@ -286,8 +286,7 @@ async function searchCommand(args: string[], f: Flags, out: Out): Promise<void> 
   const source = searchSource(id);
   const limit = parseLimit(f);
 
-  const missing = (source.keys?.env ?? []).filter((n) => !process.env[n]);
-  if (missing.length) throw new SourceError(`${source.name} needs a ${source.keys!.cost ? `key (${source.keys!.cost})` : "free key"}. Get one at ${source.keys!.signup}, then set ${missing.join(" and ")} in your environment. Keys are never stored in config.`);
+  // Each board explains its own missing keys (USAJOBS also wants the email the key was asked for with).
 
   const country = f.country?.trim().toLowerCase();
   if (country && source.countries && !source.countries.includes(country)) throw new SourceError(`${source.name} doesn't cover "${country}". Countries: ${source.countries.join(", ")}`);
@@ -319,7 +318,13 @@ async function searchCommand(args: string[], f: Flags, out: Out): Promise<void> 
   // The same ad can match several titles: keep it once.
   const jobs = new Map<string, Job>();
   for (const r of results) for (const j of r.jobs) if (!jobs.has(j.id)) jobs.set(j.id, j);
-  for (const r of results) if (r.totalAds) notes.push(`${source.name} has ${r.totalAds.toLocaleString("en-GB")} matches for "${r.query.what}"; only the first ${r.jobs.length.toLocaleString("en-GB")} were read. Narrower words or a place find the rest.`);
+  const n = (x: number) => x.toLocaleString("en-GB");
+  for (const r of results) {
+    if (!r.totalAds) continue;
+    // A board that searches finds every match; one we search ourselves only knows what we read of it.
+    if (source.places) notes.push(`${source.name} has ${n(r.totalAds)} matches for "${r.query.what}"; only the first ${n(r.jobs.length)} were read. Narrower words or a place find the rest.`);
+    else notes.push(`${n(r.totalAds)} of the ads we read from ${source.name} match "${r.query.what}"; only the first ${n(r.jobs.length)} were kept. Narrower words find fewer.`);
+  }
 
   const looked = queries.map((q) => `"${q}"`).join(", ");
   return showJobs(

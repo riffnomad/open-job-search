@@ -1,15 +1,19 @@
 import type { BoardSource, SearchSource } from "./source.ts";
 import { SourceError } from "./source.ts";
 import { adzuna } from "./sources/adzuna.ts";
+import { arbeitnow } from "./sources/arbeitnow.ts";
 import { ashby } from "./sources/ashby.ts";
 import { greenhouse } from "./sources/greenhouse.ts";
+import { hackernews } from "./sources/hackernews.ts";
 import { lever } from "./sources/lever.ts";
 import { personio } from "./sources/personio.ts";
 import { recruitee } from "./sources/recruitee.ts";
+import { reed } from "./sources/reed.ts";
 import { remoteok } from "./sources/remoteok.ts";
 import { remotive } from "./sources/remotive.ts";
 import { smartrecruiters } from "./sources/smartrecruiters.ts";
 import { teamtailor } from "./sources/teamtailor.ts";
+import { usajobs } from "./sources/usajobs.ts";
 import { workable } from "./sources/workable.ts";
 import { workday } from "./sources/workday.ts";
 
@@ -18,7 +22,7 @@ export * from "./html.ts";
 export * from "./source.ts";
 export * from "./judge.ts";
 export * from "./xml.ts";
-export { adzuna, ashby, greenhouse, lever, personio, recruitee, remoteok, remotive, smartrecruiters, teamtailor, workable, workday };
+export { adzuna, arbeitnow, ashby, greenhouse, hackernews, lever, personio, recruitee, reed, remoteok, remotive, smartrecruiters, teamtailor, usajobs, workable, workday };
 
 /** Every hiring system we can read, by id. */
 export const BOARD_SOURCES: Record<string, BoardSource> = { greenhouse, ashby, lever, smartrecruiters, workable, personio, recruitee, teamtailor, workday };
@@ -27,7 +31,7 @@ export const BOARD_SOURCES: Record<string, BoardSource> = { greenhouse, ashby, l
  * Every job board we can search, by id. Searched by words and place across
  * many companies, unlike hiring systems, which are read one company at a time.
  */
-export const SEARCH_SOURCES: Record<string, SearchSource> = { adzuna, remotive, remoteok };
+export const SEARCH_SOURCES: Record<string, SearchSource> = { adzuna, remotive, remoteok, arbeitnow, reed, usajobs, hackernews };
 
 export function searchSource(id: string): SearchSource {
   const s = SEARCH_SOURCES[id.toLowerCase()];
