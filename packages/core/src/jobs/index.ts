@@ -5,15 +5,16 @@ import { greenhouse } from "./sources/greenhouse.ts";
 import { lever } from "./sources/lever.ts";
 import { smartrecruiters } from "./sources/smartrecruiters.ts";
 import { workable } from "./sources/workable.ts";
+import { workday } from "./sources/workday.ts";
 
 export * from "./job.ts";
 export * from "./html.ts";
 export * from "./source.ts";
 export * from "./judge.ts";
-export { ashby, greenhouse, lever, smartrecruiters, workable };
+export { ashby, greenhouse, lever, smartrecruiters, workable, workday };
 
 /** Every hiring system we can read, by id. */
-export const BOARD_SOURCES: Record<string, BoardSource> = { greenhouse, ashby, lever, smartrecruiters, workable };
+export const BOARD_SOURCES: Record<string, BoardSource> = { greenhouse, ashby, lever, smartrecruiters, workable, workday };
 
 export function boardSource(id: string): BoardSource {
   const s = BOARD_SOURCES[id.toLowerCase()];

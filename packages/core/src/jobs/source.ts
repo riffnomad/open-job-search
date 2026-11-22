@@ -12,6 +12,8 @@ export interface FetchOptions {
   fetch?: typeof fetch;
   /** Milliseconds before giving up. */
   timeoutMs?: number;
+  /** Milliseconds to wait between pages, for sources that ask to be read gently. Tests set 0. */
+  pauseMs?: number;
 }
 
 export interface BoardSource {
@@ -34,17 +36,32 @@ export class SourceError extends Error {
 export const USER_AGENT = "open-job-search (+https://github.com/riffnomad/open-job-search)";
 
 /** GET JSON, with a timeout and errors in plain words. 404 comes back as null. */
-export async function getJson(url: string, what: string, opts: FetchOptions = {}): Promise<unknown | null> {
+export function getJson(url: string, what: string, opts: FetchOptions = {}): Promise<unknown | null> {
+  return requestJson(url, what, opts);
+}
+
+/** POST a JSON body and read JSON back, the same way as getJson. For sources whose list of jobs is a search. */
+export function postJson(url: string, body: unknown, what: string, opts: FetchOptions = {}): Promise<unknown | null> {
+  return requestJson(url, what, opts, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } });
+}
+
+async function requestJson(url: string, what: string, opts: FetchOptions, init: { method?: string; body?: string; headers?: Record<string, string> } = {}): Promise<unknown | null> {
   const f = opts.fetch ?? fetch;
   let res: Response;
   try {
-    res = await f(url, { headers: { accept: "application/json", "user-agent": USER_AGENT }, signal: AbortSignal.timeout(opts.timeoutMs ?? 30_000) });
+    res = await f(url, {
+      method: init.method ?? "GET",
+      ...(init.body === undefined ? {} : { body: init.body }),
+      headers: { accept: "application/json", "user-agent": USER_AGENT, ...init.headers },
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 30_000),
+    });
   } catch (e) {
     const msg = (e as Error).name === "TimeoutError" ? "it took too long to answer" : (e as Error).message;
     throw new SourceError(`couldn't reach ${what}: ${msg}`);
   }
   if (res.status === 404) return null;
   if (res.status === 429) throw new SourceError(`${what} says we're asking too often. Try again later.`);
+  if (res.status === 403) throw new SourceError(`${what} turned us away (403). We don't try to get round that.`);
   if (!res.ok) throw new SourceError(`${what} answered ${res.status} ${res.statusText}`.trim());
   try {
     return await res.json();
