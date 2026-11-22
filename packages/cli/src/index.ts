@@ -45,7 +45,7 @@ Commands:
   prefs                    What they want from a job: work, pay, deal-breakers, priorities (see below)
   flow                     Where you are in the steps, and what's next (see below)
   profile                  Their profile: roles, past lives, details (see below)
-  jobs                     Fetch job ads from hiring systems (see below)
+  jobs                     Fetch job ads from hiring systems and job boards (see below)
   doctor                   Check your setup
   help                     Show this help
 
@@ -116,6 +116,8 @@ const { values, positionals } = parseArgs({
     replace: { type: "string" },
     remove: { type: "boolean", default: false },
     limit: { type: "string" },
+    where: { type: "string" },
+    country: { type: "string" },
     to: { type: "string" },
     source: { type: "string" },
     text: { type: "string", multiple: true },

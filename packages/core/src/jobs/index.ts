@@ -1,10 +1,13 @@
-import type { BoardSource } from "./source.ts";
+import type { BoardSource, SearchSource } from "./source.ts";
 import { SourceError } from "./source.ts";
+import { adzuna } from "./sources/adzuna.ts";
 import { ashby } from "./sources/ashby.ts";
 import { greenhouse } from "./sources/greenhouse.ts";
 import { lever } from "./sources/lever.ts";
 import { personio } from "./sources/personio.ts";
 import { recruitee } from "./sources/recruitee.ts";
+import { remoteok } from "./sources/remoteok.ts";
+import { remotive } from "./sources/remotive.ts";
 import { smartrecruiters } from "./sources/smartrecruiters.ts";
 import { teamtailor } from "./sources/teamtailor.ts";
 import { workable } from "./sources/workable.ts";
@@ -15,10 +18,22 @@ export * from "./html.ts";
 export * from "./source.ts";
 export * from "./judge.ts";
 export * from "./xml.ts";
-export { ashby, greenhouse, lever, personio, recruitee, smartrecruiters, teamtailor, workable, workday };
+export { adzuna, ashby, greenhouse, lever, personio, recruitee, remoteok, remotive, smartrecruiters, teamtailor, workable, workday };
 
 /** Every hiring system we can read, by id. */
 export const BOARD_SOURCES: Record<string, BoardSource> = { greenhouse, ashby, lever, smartrecruiters, workable, personio, recruitee, teamtailor, workday };
+
+/**
+ * Every job board we can search, by id. Searched by words and place across
+ * many companies, unlike hiring systems, which are read one company at a time.
+ */
+export const SEARCH_SOURCES: Record<string, SearchSource> = { adzuna, remotive, remoteok };
+
+export function searchSource(id: string): SearchSource {
+  const s = SEARCH_SOURCES[id.toLowerCase()];
+  if (!s) throw new SourceError(`no job board called "${id}". Job boards: ${Object.keys(SEARCH_SOURCES).join(", ") || "none yet"}`);
+  return s;
+}
 
 export function boardSource(id: string): BoardSource {
   const s = BOARD_SOURCES[id.toLowerCase()];

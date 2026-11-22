@@ -1,11 +1,16 @@
 /**
- * A source is one way of reaching jobs. This first kind is a hiring system
- * (ATS): one module reads any company's public board on it, given the
- * board's name ("acme") or a link to it. Never a module for one company.
+ * A source is one way of reaching jobs. Two kinds:
+ *
+ * - A hiring system (ATS), a BoardSource: one module reads any company's
+ *   public board on it, given the board's name ("acme") or a link to it.
+ * - A job board or aggregator, a SearchSource: searched by words and place
+ *   across many companies.
+ *
+ * Never a module for one company.
  *
  * Sources only fetch and reshape; judging jobs happens elsewhere.
  */
-import type { BoardResult } from "./job.ts";
+import type { BoardResult, Job } from "./job.ts";
 
 export interface FetchOptions {
   /** For tests. Defaults to the global fetch. */
@@ -32,6 +37,58 @@ export interface BoardSource {
   fetchBoard(board: string, opts?: FetchOptions): Promise<BoardResult>;
 }
 
+/** What to look for on a job board. */
+export interface SearchQuery {
+  /** Words to look for, usually one job title: "data engineer". */
+  what: string;
+  /** A place as people write it: "Leeds", "Greater London". Sources that can't search by place say so (`places`). */
+  where?: string;
+  /** ISO 3166 two-letter code, lower case ("gb"), for sources split by country. */
+  country?: string;
+  /** The most jobs to bring back. Each source has its own default and ceiling. */
+  limit?: number;
+}
+
+export interface SearchOptions extends FetchOptions {
+  /** Where keys are read from. Core never reads process.env itself; the CLI passes it in. */
+  env?: Record<string, string | undefined>;
+}
+
+/**
+ * A job board or aggregator: searched across many companies, by words and
+ * place, rather than read one company's board at a time.
+ */
+export interface SearchSource {
+  /** "adzuna" */
+  id: string;
+  /** "Adzuna" */
+  name: string;
+  /** One line on what it covers: "Jobs from many boards in 19 countries". */
+  covers: string;
+  /** Whether it searches by place (`where`). Remote boards don't. */
+  places: boolean;
+  /** Country codes it can search, when it's split by country; the first is the default. */
+  countries?: string[];
+  /** Keys it needs, by environment variable name, and where to get them. Never the values. */
+  keys?: { env: string[]; signup: string };
+  /** The credit its terms ask for, shown next to its jobs: "Jobs by Adzuna (https://www.adzuna.co.uk)". */
+  credit?: string;
+  /** A short label the terms want on every ad, not just once under the list: "Adzuna". */
+  creditEach?: string;
+  search(query: SearchQuery, opts?: SearchOptions): Promise<SearchResult>;
+}
+
+/** What one search of one job board brought back. */
+export interface SearchResult {
+  source: string;
+  query: SearchQuery;
+  jobs: Job[];
+  /** How many matches the board says it has, set only when it has more than we read. */
+  totalAds?: number;
+  /** ISO 8601. */
+  fetchedAt: string;
+}
+
 export class SourceError extends Error {
   override name = "SourceError";
 }
@@ -42,6 +99,42 @@ export const USER_AGENT = "open-job-search (+https://github.com/riffnomad/open-j
 /** GET JSON, with a timeout and errors in plain words. 404 comes back as null. */
 export function getJson(url: string, what: string, opts: FetchOptions = {}): Promise<unknown | null> {
   return requestJson(url, what, opts);
+}
+
+/** Replies kept by getJsonOnce, per fetch function (tests each bring their own) and URL. */
+const kept = new WeakMap<typeof fetch, Map<string, { at: number; reply: Promise<unknown | null> }>>();
+
+/**
+ * getJson, but a reply is kept for a few minutes and reused. For job boards
+ * that send their whole feed at once and ask to be read rarely: searching for
+ * five titles then asks once, not five times.
+ */
+export function getJsonOnce(url: string, what: string, opts: FetchOptions = {}, keepMs = 10 * 60_000): Promise<unknown | null> {
+  const f = opts.fetch ?? fetch;
+  let byUrl = kept.get(f);
+  if (!byUrl) kept.set(f, (byUrl = new Map()));
+  const hit = byUrl.get(url);
+  if (hit && Date.now() - hit.at < keepMs) return hit.reply;
+  const reply = getJson(url, what, opts);
+  byUrl.set(url, { at: Date.now(), reply });
+  // A failed request isn't kept, so the next try asks again.
+  reply.catch(() => byUrl.delete(url));
+  return reply;
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * A test for text holding every one of the words, each as a whole word (so
+ * "engineer" isn't found in "engineering"), ignoring case. For job boards we
+ * search ourselves, by reading their whole feed.
+ */
+export function hasAllWords(words: string): (text: string) => boolean {
+  const res = words
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(w)}(?![\\p{L}\\p{N}])`, "iu"));
+  return (text) => res.every((re) => re.test(text));
 }
 
 /** POST a JSON body and read JSON back, the same way as getJson. For sources whose list of jobs is a search. */
@@ -87,6 +180,7 @@ async function request(url: string, what: string, opts: FetchOptions, init: Requ
     throw new SourceError(`couldn't reach ${what}: ${msg}`);
   }
   if (res.status === 404) return null;
+  if (res.status === 401) throw new SourceError(`${what} refused the key (401). Check it's set correctly.`);
   if (res.status === 429) throw new SourceError(`${what} says we're asking too often. Try again later.`);
   if (res.status === 403) throw new SourceError(`${what} turned us away (403). We don't try to get round that.`);
   if (!res.ok) throw new SourceError(`${what} answered ${res.status} ${res.statusText}`.trim());

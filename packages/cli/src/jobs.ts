@@ -5,6 +5,7 @@ import {
   boardSource,
   type BoardResult,
   groupJobs,
+  type Job,
   judgeTitles,
   type JobGroup,
   knownCalls,
@@ -14,6 +15,10 @@ import {
   parseSavedCalls,
   saveCalls,
   searchDir,
+  SEARCH_SOURCES,
+  searchSource,
+  type SearchQuery,
+  type SearchResult,
   SourceError,
   sourceForLink,
   type Level,
@@ -28,7 +33,7 @@ import {
 type Out = (human: string, data: unknown) => void;
 
 export const JOBS_HELP = `Jobs (fetching job ads from the sources):
-  jobs sources                    The hiring systems we can read
+  jobs sources                    The hiring systems we can read and the job boards we can search
   jobs fetch <source> <board>     Every job on one company's board, e.g. \`jobs fetch greenhouse acme\`
   jobs fetch <link>               The same, from a link to the board (job-boards.greenhouse.io/acme)
                                   The same job posted for several places is shown once. When the search
@@ -38,6 +43,10 @@ export const JOBS_HELP = `Jobs (fetching job ads from the sources):
                                   --judge has your AI judge titles not seen before.
                                   --all also shows different and ruled-out jobs, --limit <n> caps the list,
                                   --full adds the ad text. Without titles: the newest 20.
+  jobs search <job board> [words] Search a job board across many companies, e.g. \`jobs search adzuna "data engineer"\`
+                                  Without words, searches for each of the search's core titles.
+                                  --where <place> near a place, --country <code> for boards split by
+                                  country (gb, us…). Jobs are judged and shown as with fetch.
   jobs judge --yaml "<list>"      Save verdicts: [{title: "<ad title>", verdict: core|related|open|different,
                                   level: same|below|above|unclear, of: "<their title>", why: "…"}]
                                   --by person for corrections the person made (kept when titles change)
@@ -45,6 +54,8 @@ export const JOBS_HELP = `Jobs (fetching job ads from the sources):
 
 interface Flags {
   all?: boolean;
+  where?: string;
+  country?: string;
   full?: boolean;
   limit?: string;
   judge?: boolean;
@@ -117,7 +128,7 @@ async function searchTitles(): Promise<SearchTitles> {
 
 type Shown = JobGroup & { tag?: Tag; match?: TitleCall };
 
-function groupLines(g: Shown, full = false): string[] {
+function groupLines(g: Shown, full = false, company = false, label = ""): string[] {
   const m = g.match;
   const tag = g.tag ? LABEL[g.tag] : "";
   const notes = [m?.level && m.level !== "same" ? LEVEL_TEXT[m.level] : "", m?.verdict === "open" ? `if ${m.if ?? "its condition holds"}` : "", m?.verdict === "excluded" ? `"${m.word}"` : ""].filter(Boolean);
@@ -125,7 +136,7 @@ function groupLines(g: Shown, full = false): string[] {
   const why = m?.why && m.by !== "rule" && g.tag !== "different" ? m.why : "";
   const places = g.locations.length > 3 ? `${g.locations.slice(0, 3).join("; ")} and ${g.locations.length - 3} more` : g.locations.join("; ");
   const pay = payLine(g.pay);
-  const facts = [places || "no location given", pay, g.postedAt ? `posted ${g.postedAt.slice(0, 10)}` : ""].filter(Boolean);
+  const facts = [company ? g.company : "", places || "no location given", pay, g.postedAt ? `posted ${g.postedAt.slice(0, 10)}` : "", label ? `via ${label}` : ""].filter(Boolean);
   const ads = g.jobs.length > 1 ? `  (and ${g.jobs.length - 1} more ad${g.jobs.length > 2 ? "s" : ""} for other places)` : "";
   const pad = "".padEnd(12);
   const text = full ? (g.jobs[0]!.description ?? "(the ad has no text in this source)").split("\n").map((l) => (l ? `${pad}  ${l}` : "")) : [];
@@ -147,16 +158,59 @@ async function fetchCommand(args: string[], f: Flags, out: Out): Promise<void> {
     if (!hit) throw new SourceError(`"${first}" isn't a source or a link we can read. Sources: ${Object.keys(BOARD_SOURCES).join(", ")}`);
     ({ source, board } = hit);
   }
-  const limit = f.limit ? Number.parseInt(f.limit, 10) : undefined;
-  if (limit !== undefined && !(limit > 0)) throw new SourceError("--limit takes a number above 0");
-
+  const limit = parseLimit(f);
   const started = performance.now();
   const result: BoardResult = await source.fetchBoard(board);
   const ms = Math.round(performance.now() - started);
+  const ads = result.jobs.length;
+  return showJobs(
+    {
+      heading: `${result.company} on ${source.name}`,
+      jobs: result.jobs,
+      ms,
+      fetchedAt: result.fetchedAt,
+      notes: result.totalAds ? [`Only the newest ${ads.toLocaleString("en-GB")} of ${result.totalAds.toLocaleString("en-GB")} ads were read: ${source.name} lists too many to read them all.`] : [],
+      empty: "No jobs like theirs on this board.",
+      data: { source: result.source, board: result.board, company: result.company, ...(result.totalAds ? { totalAds: result.totalAds } : {}) },
+    },
+    limit,
+    f,
+    out,
+  );
+}
 
+function parseLimit(f: Flags): number | undefined {
+  const limit = f.limit ? Number.parseInt(f.limit, 10) : undefined;
+  if (limit !== undefined && !(limit > 0)) throw new SourceError("--limit takes a number above 0");
+  return limit;
+}
+
+/** What a fetch or a search read, ready to judge and show. */
+interface Read {
+  /** "Acme on Greenhouse", or "Adzuna (gb): \"data engineer\" near Leeds". */
+  heading: string;
+  jobs: Job[];
+  ms: number;
+  fetchedAt: string;
+  /** Lines under the heading: what wasn't read, what a board couldn't do. */
+  notes: string[];
+  /** Said when titles hide every job. */
+  empty: string;
+  /** The credit the source's terms ask for, shown with its jobs. */
+  credit?: string;
+  /** Shown on every job, for sources whose terms want each ad labelled. */
+  creditEach?: string;
+  /** Jobs from many companies (a job board), so each job names its company. */
+  manyCompanies?: boolean;
+  /** Fields that lead the JSON output. */
+  data: Record<string, unknown>;
+}
+
+/** Groups, judges and shows jobs, the same for a company's board and a job board's search. */
+async function showJobs(r: Read, limit: number | undefined, f: Flags, out: Out): Promise<void> {
   const st = await searchTitles();
   const has = "titles" in st;
-  const grouped = groupJobs(result.jobs);
+  const grouped = groupJobs(r.jobs);
   let judging: { stored: number; rule: number; judged: number; unjudged: string[]; by?: string } | undefined;
   let calls = new Map<string, TitleCall>();
   if (has) {
@@ -185,11 +239,11 @@ async function fetchCommand(args: string[], f: Flags, out: Out): Promise<void> {
   const cap = limit ?? (has || f.all ? undefined : DEFAULT_LIMIT);
   const shown = cap ? chosen.slice(0, cap) : chosen;
 
-  const ads = result.jobs.length;
+  const ads = r.jobs.length;
   const human: string[] = [
-    `${result.company} on ${source.name}: ${groups.length} job${groups.length === 1 ? "" : "s"}${ads !== groups.length ? ` (${ads} ads: some jobs are posted once per place)` : ""}, ${(ms / 1000).toFixed(1)}s`,
+    `${r.heading}: ${groups.length} job${groups.length === 1 ? "" : "s"}${ads !== groups.length ? ` (${ads} ads: some jobs are posted once per place)` : ""}, ${(r.ms / 1000).toFixed(1)}s`,
+    ...r.notes,
   ];
-  if (result.totalAds) human.push(`Only the newest ${ads.toLocaleString("en-GB")} of ${result.totalAds.toLocaleString("en-GB")} ads were read: ${source.name} lists too many to read them all.`);
   if (has && counts) {
     human.push(`Against ${st.person}'s "${st.search}" titles: ${(Object.keys(ORDER) as Tag[]).filter((k) => counts[k]).map((k) => `${counts[k]} ${LABEL[k]}`).join(" · ")}`);
     if (levels && LEVELS.some((l) => levels[l])) human.push(`Level by title alone (a hint; the ad decides): ${LEVELS.filter((l) => levels[l]).map((l) => `${levels[l]} ${l === "same" ? "same" : l === "unclear" ? "not shown" : l}`).join(" · ")}`);
@@ -199,20 +253,19 @@ async function fetchCommand(args: string[], f: Flags, out: Out): Promise<void> {
       if (judging.unjudged.length) human.push(`${judging.unjudged.length} title${judging.unjudged.length === 1 ? "" : "s"} not judged yet: add --judge to have your AI judge them (it's remembered after).`);
     }
   } else human.push(`Not matched against any titles: ${(st as { why: string }).why}.`);
-  if (shown.length) human.push("", ...shown.flatMap((g) => [...groupLines(g, f.full), ""]));
-  else if (has) human.push("", "No jobs like theirs on this board.");
+  if (shown.length) human.push("", ...shown.flatMap((g) => [...groupLines(g, f.full, r.manyCompanies, r.creditEach), ""]));
+  else if (has) human.push("", r.empty);
   const hidden = groups.length - shown.length;
   if (hidden > 0) human.push(has && !f.all ? `${hidden} more that are different jobs or ruled out: --all shows them.` : `${hidden} more: --all shows every job, or --limit <n>.`);
-  human.push(`\nFetched ${result.fetchedAt}. Nothing is saved yet.`);
+  if (r.credit) human.push(r.credit);
+  human.push(`\nFetched ${r.fetchedAt}. Nothing is saved yet.`);
 
   out(human.join("\n").trimEnd(), {
-    source: result.source,
-    board: result.board,
-    company: result.company,
-    fetchedAt: result.fetchedAt,
+    ...r.data,
+    fetchedAt: r.fetchedAt,
     total: groups.length,
-    ...(result.totalAds ? { totalAds: result.totalAds } : {}),
     ads,
+    ...(r.credit ? { credit: r.credit } : {}),
     titlesFrom: has ? { person: st.person, search: st.search } : null,
     ...(has ? {} : { notMatchedBecause: (st as { why: string }).why }),
     ...(counts ? { counts, levels } : {}),
@@ -220,6 +273,72 @@ async function fetchCommand(args: string[], f: Flags, out: Out): Promise<void> {
     shown: shown.length,
     jobs: shown.map((g) => (f.full ? g : { ...g, jobs: g.jobs.map(({ description, ...rest }) => rest) })),
   });
+}
+
+
+/** Most queries one search runs when it searches for each core title, so a long list doesn't use up a board's daily allowance. */
+const MAX_QUERIES = 5;
+
+async function searchCommand(args: string[], f: Flags, out: Out): Promise<void> {
+  const [id, ...words] = args;
+  const boards = Object.keys(SEARCH_SOURCES).join(", ") || "none yet";
+  if (!id) throw new SourceError(`usage: ojs jobs search <job board> [words] [--where <place>] [--country <code>]. Job boards: ${boards}`);
+  const source = searchSource(id);
+  const limit = parseLimit(f);
+
+  const missing = (source.keys?.env ?? []).filter((n) => !process.env[n]);
+  if (missing.length) throw new SourceError(`${source.name} needs a free key. Get one at ${source.keys!.signup}, then set ${missing.join(" and ")} in your environment. Keys are never stored in config.`);
+
+  const country = f.country?.trim().toLowerCase();
+  if (country && source.countries && !source.countries.includes(country)) throw new SourceError(`${source.name} doesn't cover "${country}". Countries: ${source.countries.join(", ")}`);
+
+  const notes: string[] = [];
+  if (country && !source.countries) notes.push(`${source.name} isn't split by country, so --country was left out.`);
+  const where = f.where?.trim() || undefined;
+  if (where && !source.places) notes.push(`${source.name} can't search by place, so --where was left out: check each job's location.`);
+
+  const what = words.join(" ").trim();
+  let queries: string[];
+  if (what) queries = [what];
+  else {
+    const st = await searchTitles();
+    if (!("titles" in st) || !st.titles.core.length)
+      throw new SourceError(`what should we look for? Give words (ojs jobs search ${source.id} "data engineer"), or add core titles to the search (${"titles" in st ? "step 3: `ojs search titles`" : st.why}).`);
+    queries = st.titles.core.slice(0, MAX_QUERIES);
+    if (st.titles.core.length > MAX_QUERIES) notes.push(`Searched for the first ${MAX_QUERIES} of ${st.titles.core.length} core titles; give words to search for another.`);
+  }
+
+  // Boards split by country search the first one they list unless told otherwise.
+  const inCountry = source.countries ? (country ?? source.countries[0]) : undefined;
+  const base: Omit<SearchQuery, "what"> = { ...(where && source.places ? { where } : {}), ...(inCountry ? { country: inCountry } : {}) };
+  const started = performance.now();
+  const results: SearchResult[] = [];
+  for (const q of queries) results.push(await source.search({ ...base, what: q }, { env: process.env }));
+  const ms = Math.round(performance.now() - started);
+
+  // The same ad can match several titles: keep it once.
+  const jobs = new Map<string, Job>();
+  for (const r of results) for (const j of r.jobs) if (!jobs.has(j.id)) jobs.set(j.id, j);
+  for (const r of results) if (r.totalAds) notes.push(`${source.name} has ${r.totalAds.toLocaleString("en-GB")} matches for "${r.query.what}"; only the first ${r.jobs.length.toLocaleString("en-GB")} were read. Narrower words or a place find the rest.`);
+
+  const looked = queries.map((q) => `"${q}"`).join(", ");
+  return showJobs(
+    {
+      heading: `${source.name}${base.country ? ` (${base.country})` : ""}: ${looked}${base.where ? ` near ${base.where}` : ""}`,
+      jobs: [...jobs.values()],
+      ms,
+      fetchedAt: results[results.length - 1]?.fetchedAt ?? new Date().toISOString(),
+      notes,
+      empty: "None of these are jobs like theirs.",
+      manyCompanies: true,
+      ...(source.credit ? { credit: source.credit } : {}),
+      ...(source.creditEach ? { creditEach: source.creditEach } : {}),
+      data: { source: source.id, queries: results.map((r) => ({ ...r.query, read: r.jobs.length, ...(r.totalAds ? { totalAds: r.totalAds } : {}) })) },
+    },
+    limit,
+    f,
+    out,
+  );
 }
 
 async function judgeCommand(f: Flags, out: Out): Promise<void> {
@@ -237,13 +356,28 @@ export async function jobsCommand(rest: string[], f: Flags, out: Out): Promise<v
   switch (sub) {
     case "fetch":
       return fetchCommand(args, f, out);
+    case "search":
+      return searchCommand(args, f, out);
     case "judge":
       return judgeCommand(f, out);
     case "sources":
     case undefined: {
       const list = Object.values(BOARD_SOURCES).map((s) => ({ id: s.id, name: s.name, board: s.boardHint }));
-      const width = Math.max(...list.map((s) => s.id.length)) + 2;
-      return out(["Hiring systems we can read:", ...list.map((s) => `  ${s.id.padEnd(width)}${s.board}`), "", "Fetch one: ojs jobs fetch <source> <board>"].join("\n"), { sources: list });
+      const boards = Object.values(SEARCH_SOURCES).map((s) => ({
+        id: s.id,
+        name: s.name,
+        covers: s.covers,
+        places: s.places,
+        ...(s.countries ? { countries: s.countries } : {}),
+        ...(s.keys ? { keys: s.keys.env, keysReady: s.keys.env.every((n) => process.env[n]), signup: s.keys.signup } : {}),
+      }));
+      const width = Math.max(...[...list, ...boards].map((s) => s.id.length)) + 2;
+      const lines = ["Hiring systems we can read, one company at a time:", ...list.map((s) => `  ${s.id.padEnd(width)}${s.board}`), "", "Fetch one: ojs jobs fetch <source> <board>"];
+      if (boards.length) {
+        const key = (b: (typeof boards)[number]) => (b.keys ? (b.keysReady ? " (key set)" : ` (needs a free key: ${b.keys.join(", ")})`) : "");
+        lines.push("", "Job boards we can search, across many companies:", ...boards.map((b) => `  ${b.id.padEnd(width)}${b.covers}${key(b)}`), "", 'Search one: ojs jobs search <job board> "<words>" [--where <place>]');
+      }
+      return out(lines.join("\n"), { sources: list, jobBoards: boards });
     }
     default:
       throw new SourceError(`unknown subcommand "jobs ${sub}". Run \`ojs help\`.`);

@@ -20,7 +20,7 @@ export interface Job {
   id: string;
   /** Which source module: "greenhouse". */
   source: string;
-  /** The company's board at that source: "acme". */
+  /** The company's board at that source ("acme"); for a job board, the part searched ("gb", "remote"). */
   board: string;
   company: string;
   title: string;
