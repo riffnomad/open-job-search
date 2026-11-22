@@ -87,20 +87,22 @@ export type TitleMatch =
   | { match: "none" };
 
 /**
- * How a job ad's title relates to the lists. A listed title matches when its
- * words appear together in the ad's title ("Senior Staff Engineer, Payments"
- * matches "Staff Engineer"); an exclude word anywhere rules it out first.
- * The title alone never settles seniority: an open match still needs its
- * condition checked against the ad, and "none" is not a no.
+ * What the lists alone say for certain about a job ad's title: an exclude
+ * word anywhere rules it out; an ad title that is exactly one of their titles
+ * (ignoring case and punctuation) is in that list. Anything else is "none":
+ * not decided here. Whether "Staff Software Engineer" is the same job and
+ * level as "Staff Engineer" depends on the field, so that's judged
+ * elsewhere (jobs/judge.ts). An open match still needs its condition checked.
  */
 export function matchTitle(adTitle: string, t: Titles): TitleMatch {
   const word = t.exclude.find((w) => has(adTitle, w));
   if (word) return { match: "excluded", word };
+  const ad = words(adTitle);
   for (const list of ["core", "related"] as const) {
-    const hit = searched(t).find((x) => x.list === list && has(adTitle, x.title));
+    const hit = searched(t).find((x) => x.list === list && words(x.title) === ad);
     if (hit) return { match: list, title: hit.title };
   }
-  const open = t.open.find((x) => has(adTitle, x.title));
+  const open = t.open.find((x) => words(x.title) === ad);
   if (open) return { match: "open", title: open.title, if: open.if };
   return { match: "none" };
 }

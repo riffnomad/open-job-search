@@ -5,6 +5,7 @@ import { greenhouse } from "./sources/greenhouse.ts";
 export * from "./job.ts";
 export * from "./html.ts";
 export * from "./source.ts";
+export * from "./judge.ts";
 export { greenhouse };
 
 /** Every hiring system we can read, by id. */

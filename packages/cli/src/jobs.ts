@@ -5,12 +5,20 @@ import {
   boardSource,
   type BoardResult,
   groupJobs,
+  judgeTitles,
   type JobGroup,
-  matchTitle,
+  knownCalls,
+  loadConfig,
   type Pay,
+  resolveProvider,
+  parseSavedCalls,
+  saveCalls,
+  searchDir,
   SourceError,
   sourceForLink,
-  type TitleMatch,
+  type Level,
+  LEVELS,
+  type TitleCall,
   searchIds,
   titlesEmpty,
   titlesFor,
@@ -24,18 +32,35 @@ export const JOBS_HELP = `Jobs (fetching job ads from the sources):
   jobs fetch <source> <board>     Every job on one company's board, e.g. \`jobs fetch greenhouse acme\`
   jobs fetch <link>               The same, from a link to the board (job-boards.greenhouse.io/acme)
                                   The same job posted for several places is shown once. When the search
-                                  has titles, shows the jobs whose titles match; otherwise the newest 20.
-                                  --all shows every job, --limit <n> caps the list, --full adds the ad text
+                                  has titles, each job title is judged against them: the same kind of job
+                                  as a core, related or open title, or a different job, with the level the
+                                  title shows as a hint (it never hides a job). Verdicts are remembered;
+                                  --judge has your AI judge titles not seen before.
+                                  --all also shows different and ruled-out jobs, --limit <n> caps the list,
+                                  --full adds the ad text. Without titles: the newest 20.
+  jobs judge --yaml "<list>"      Save verdicts: [{title: "<ad title>", verdict: core|related|open|different,
+                                  level: same|below|above|unclear, of: "<their title>", why: "…"}]
+                                  --by person for corrections the person made (kept when titles change)
 `;
 
 interface Flags {
   all?: boolean;
   full?: boolean;
   limit?: string;
+  judge?: boolean;
+  json?: boolean;
+  provider?: string;
+  yaml?: string;
+  by?: string;
 }
 
-const ORDER: Record<TitleMatch["match"], number> = { core: 0, related: 1, open: 2, none: 3, excluded: 4 };
-const MATCHED = new Set<TitleMatch["match"]>(["core", "related", "open"]);
+type Tag = TitleCall["verdict"] | "unjudged";
+const ORDER: Record<Tag, number> = { core: 0, related: 1, open: 2, unjudged: 3, different: 4, excluded: 5 };
+/** Shown without --all. */
+const SHOWN = new Set<Tag>(["core", "related", "open", "unjudged"]);
+const LABEL: Record<Tag, string> = { core: "core", related: "related", open: "open", unjudged: "not judged", different: "different", excluded: "ruled out" };
+const LEVEL_ORDER: Record<Level, number> = { same: 0, unclear: 1, above: 2, below: 3 };
+const LEVEL_TEXT: Record<Level, string> = { same: "same level", unclear: "level not in the title", above: "title says a level above", below: "title says a level below" };
 /** Jobs listed when there are no titles to narrow them and no --limit. */
 const DEFAULT_LIMIT = 20;
 
@@ -70,18 +95,20 @@ async function searchTitles(): Promise<SearchTitles> {
   return { person, search, titles: v.titles };
 }
 
-type Shown = JobGroup & { match?: TitleMatch };
+type Shown = JobGroup & { tag?: Tag; match?: TitleCall };
 
 function groupLines(g: Shown): string[] {
   const m = g.match;
-  const tag = m ? (m.match === "excluded" ? "ruled out" : m.match === "none" ? "" : m.match) : "";
-  const extra = m?.match === "open" ? `  (if ${m.if})` : m?.match === "excluded" ? `  ("${m.word}")` : "";
+  const tag = g.tag ? LABEL[g.tag] : "";
+  const notes = [m?.level && m.level !== "same" ? LEVEL_TEXT[m.level] : "", m?.verdict === "open" ? `if ${m.if ?? "its condition holds"}` : "", m?.verdict === "excluded" ? `"${m.word}"` : ""].filter(Boolean);
+  const extra = notes.length ? `  (${notes.join("; ")})` : "";
+  const why = m?.why && m.by !== "rule" && g.tag !== "different" ? m.why : "";
   const places = g.locations.length > 3 ? `${g.locations.slice(0, 3).join("; ")} and ${g.locations.length - 3} more` : g.locations.join("; ");
   const pay = g.pay.length ? payText(g.pay[0]!) + (g.pay.length > 1 ? ` (+${g.pay.length - 1} more ranges)` : "") : "";
   const facts = [places || "no location given", pay, g.postedAt ? `posted ${g.postedAt.slice(0, 10)}` : ""].filter(Boolean);
   const ads = g.jobs.length > 1 ? `  (and ${g.jobs.length - 1} more ad${g.jobs.length > 2 ? "s" : ""} for other places)` : "";
-  const pad = "".padEnd(10);
-  return [`${tag.padEnd(10)}${g.title}${extra}`, `${pad}${facts.join(" · ")}`, `${pad}${g.jobs[0]!.url}${ads}`];
+  const pad = "".padEnd(12);
+  return [`${tag.padEnd(12)}${g.title}${extra}`, ...(why ? [`${pad}${why}${m?.by === "person" ? " (you said)" : ""}`] : []), `${pad}${facts.join(" · ")}`, `${pad}${g.jobs[0]!.url}${ads}`];
 }
 
 async function fetchCommand(args: string[], f: Flags, out: Out): Promise<void> {
@@ -108,11 +135,32 @@ async function fetchCommand(args: string[], f: Flags, out: Out): Promise<void> {
 
   const st = await searchTitles();
   const has = "titles" in st;
-  const groups: Shown[] = groupJobs(result.jobs).map((g) => ({ ...g, ...(has ? { match: matchTitle(g.title, st.titles) } : {}) }));
-  groups.sort((a, b) => (has ? ORDER[a.match!.match] - ORDER[b.match!.match] : 0) || (b.postedAt ?? "").localeCompare(a.postedAt ?? ""));
+  const grouped = groupJobs(result.jobs);
+  let judging: { stored: number; rule: number; judged: number; unjudged: string[]; by?: string } | undefined;
+  let calls = new Map<string, TitleCall>();
+  if (has) {
+    const titles = grouped.map((g) => g.title);
+    const dir = searchDir();
+    let j = await knownCalls(titles, st.titles, dir);
+    if (f.judge && j.unjudged.length) {
+      const provider = resolveProvider(await loadConfig(), f.provider, process.env, { light: true });
+      if (!f.json) process.stderr.write(`Judging ${j.unjudged.length} new title${j.unjudged.length === 1 ? "" : "s"} with ${provider.id}…\n`);
+      j = await judgeTitles(titles, st.titles, dir, provider, { onProgress: f.json ? undefined : (d, t) => process.stderr.write(`  ${d}/${t}\n`) });
+      judging = { ...j.counts, unjudged: j.unjudged, by: provider.id };
+    } else judging = { ...j.counts, unjudged: j.unjudged };
+    calls = j.calls;
+  }
+  const groups: Shown[] = grouped.map((g) => {
+    if (!has) return g;
+    const m = calls.get(g.title);
+    return { ...g, tag: m ? m.verdict : "unjudged", ...(m ? { match: m } : {}) };
+  });
+  const lvl = (g: Shown) => (g.match?.level ? LEVEL_ORDER[g.match.level] : 9);
+  groups.sort((a, b) => (has ? ORDER[a.tag!] - ORDER[b.tag!] || lvl(a) - lvl(b) : 0) || (b.postedAt ?? "").localeCompare(a.postedAt ?? ""));
 
-  const counts = has ? Object.fromEntries(Object.keys(ORDER).map((k) => [k, groups.filter((g) => g.match!.match === k).length])) : undefined;
-  const chosen = has && !f.all ? groups.filter((g) => MATCHED.has(g.match!.match)) : groups;
+  const counts = has ? Object.fromEntries((Object.keys(ORDER) as Tag[]).map((k) => [k, groups.filter((g) => g.tag === k).length])) as Record<Tag, number> : undefined;
+  const levels = has ? Object.fromEntries(LEVELS.map((l) => [l, groups.filter((g) => SHOWN.has(g.tag!) && g.match?.level === l).length])) as Record<Level, number> : undefined;
+  const chosen = has && !f.all ? groups.filter((g) => SHOWN.has(g.tag!)) : groups;
   const cap = limit ?? (has || f.all ? undefined : DEFAULT_LIMIT);
   const shown = cap ? chosen.slice(0, cap) : chosen;
 
@@ -120,12 +168,19 @@ async function fetchCommand(args: string[], f: Flags, out: Out): Promise<void> {
   const human: string[] = [
     `${result.company} on ${source.name}: ${groups.length} job${groups.length === 1 ? "" : "s"}${ads !== groups.length ? ` (${ads} ads: some jobs are posted once per place)` : ""}, ${(ms / 1000).toFixed(1)}s`,
   ];
-  if (has && counts) human.push(`Titles from ${st.person}'s "${st.search}" search: ${counts.core} core · ${counts.related} related · ${counts.open} open · ${counts.excluded} ruled out · ${counts.none} other`);
-  else human.push(`Not matched against any titles: ${(st as { why: string }).why}.`);
+  if (has && counts) {
+    human.push(`Against ${st.person}'s "${st.search}" titles: ${(Object.keys(ORDER) as Tag[]).filter((k) => counts[k]).map((k) => `${counts[k]} ${LABEL[k]}`).join(" · ")}`);
+    if (levels && LEVELS.some((l) => levels[l])) human.push(`Level by title alone (a hint; the ad decides): ${LEVELS.filter((l) => levels[l]).map((l) => `${levels[l]} ${l === "same" ? "same" : l === "unclear" ? "not shown" : l}`).join(" · ")}`);
+    if (judging) {
+      const parts = [judging.stored && `${judging.stored} remembered`, judging.rule && `${judging.rule} certain from the lists`, judging.judged && `${judging.judged} just judged by ${judging.by}`].filter(Boolean);
+      if (parts.length) human.push(`Titles: ${parts.join(", ")}.`);
+      if (judging.unjudged.length) human.push(`${judging.unjudged.length} title${judging.unjudged.length === 1 ? "" : "s"} not judged yet: add --judge to have your AI judge them (it's remembered after).`);
+    }
+  } else human.push(`Not matched against any titles: ${(st as { why: string }).why}.`);
   if (shown.length) human.push("", ...shown.flatMap((g) => [...groupLines(g), ""]));
-  else if (has) human.push("", "No titles matched.");
+  else if (has) human.push("", "No jobs like theirs on this board.");
   const hidden = groups.length - shown.length;
-  if (hidden > 0) human.push(has && !f.all ? `${hidden} more whose titles didn't match: --all shows them.` : `${hidden} more: --all shows every job, or --limit <n>.`);
+  if (hidden > 0) human.push(has && !f.all ? `${hidden} more that are different jobs or ruled out: --all shows them.` : `${hidden} more: --all shows every job, or --limit <n>.`);
   human.push(`\nFetched ${result.fetchedAt}. Nothing is saved yet.`);
 
   out(human.join("\n").trimEnd(), {
@@ -137,10 +192,21 @@ async function fetchCommand(args: string[], f: Flags, out: Out): Promise<void> {
     ads,
     titlesFrom: has ? { person: st.person, search: st.search } : null,
     ...(has ? {} : { notMatchedBecause: (st as { why: string }).why }),
-    ...(counts ? { counts } : {}),
+    ...(counts ? { counts, levels } : {}),
+    ...(judging ? { titles: { remembered: judging.stored, certain: judging.rule, judgedNow: judging.judged, unjudged: judging.unjudged } } : {}),
     shown: shown.length,
     jobs: shown.map((g) => (f.full ? g : { ...g, jobs: g.jobs.map(({ description, ...rest }) => rest) })),
   });
+}
+
+async function judgeCommand(f: Flags, out: Out): Promise<void> {
+  if (!f.yaml) throw new SourceError('usage: ojs jobs judge --yaml "[{title: …, verdict: …, of: …, why: …}]" [--by person]');
+  const by = f.by ?? "ai";
+  if (by !== "ai" && by !== "person") throw new SourceError("--by takes ai or person");
+  const st = await searchTitles();
+  if (!("titles" in st)) throw new SourceError(`nothing to judge against: ${st.why}`);
+  const n = await saveCalls(parseSavedCalls(f.yaml), st.titles, searchDir(), by);
+  out(`Saved ${n} verdict${n === 1 ? "" : "s"} for ${st.person}'s "${st.search}" search${by === "person" ? " (yours: kept even when the titles change)" : ""}.`, { saved: n, by, search: st.search });
 }
 
 export async function jobsCommand(rest: string[], f: Flags, out: Out): Promise<void> {
@@ -148,6 +214,8 @@ export async function jobsCommand(rest: string[], f: Flags, out: Out): Promise<v
   switch (sub) {
     case "fetch":
       return fetchCommand(args, f, out);
+    case "judge":
+      return judgeCommand(f, out);
     case "sources":
     case undefined: {
       const list = Object.values(BOARD_SOURCES).map((s) => ({ id: s.id, name: s.name, board: s.boardHint }));

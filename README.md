@@ -77,8 +77,7 @@ Inside your agent, your agent does the thinking. When `ojs` needs AI on its own 
 |---|---|
 | `claude` (Claude Code) | verified |
 | `codex` (OpenAI Codex) | verified |
-| `agy` (Antigravity) | verified |
-| `gemini` (Gemini CLI) | best-effort; Google no longer serves it on the free individual tier |
+| `agy` (Antigravity) | verified; also covers Gemini (Google sends personal accounts here instead of the Gemini CLI) |
 | `opencode` | best-effort, help us verify it |
 
 APIs work too. Keys are never written to config; you name the environment variable that holds the key:

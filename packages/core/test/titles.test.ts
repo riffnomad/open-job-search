@@ -15,14 +15,16 @@ const titles = Titles.parse({
 });
 
 describe("titles", () => {
-  test("an ad title matches core, related or open; exclude words come first", () => {
-    expect(matchTitle("Senior Staff Engineer, Payments", titles)).toEqual({ match: "core", title: "Staff Engineer" });
-    expect(matchTitle("platform architect (remote)", titles)).toEqual({ match: "related", title: "Platform Architect" });
-    expect(matchTitle("Member of Technical Staff - Infrastructure", titles)).toEqual({ match: "open", title: "Member of Technical Staff", if: "pay at or above target" });
+  test("the lists alone decide only exact titles and exclude words", () => {
+    expect(matchTitle("staff engineer", titles)).toEqual({ match: "core", title: "Staff Engineer" });
+    expect(matchTitle("Platform Architect", titles)).toEqual({ match: "related", title: "Platform Architect" });
+    expect(matchTitle("Member of Technical Staff", titles)).toEqual({ match: "open", title: "Member of Technical Staff", if: "pay at or above target" });
     expect(matchTitle("Junior Staff Engineer", titles)).toEqual({ match: "excluded", word: "Junior" });
     // Whole words only: "Internal" isn't "Intern".
-    expect(matchTitle("Staff Engineer, Internal Tools", titles)).toEqual({ match: "core", title: "Staff Engineer" });
-    expect(matchTitle("Software Engineer", titles)).toEqual({ match: "none" });
+    expect(matchTitle("Staff Engineer, Internal Tools", titles)).toEqual({ match: "none" });
+    // Not decided here: a level above, or the same level with a specialism. Judged elsewhere.
+    expect(matchTitle("Senior Staff Engineer", titles)).toEqual({ match: "none" });
+    expect(matchTitle("Staff Software Engineer", titles)).toEqual({ match: "none" });
   });
 
   test("checks lists that fight each other, and asks why", () => {

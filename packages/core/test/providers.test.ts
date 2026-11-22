@@ -78,6 +78,11 @@ describe("config", () => {
       );
       const cfg = await loadConfig(path);
       expect(resolveProvider(cfg).id).toBe("cat");
+      // Light jobs use the light model when there is one, and the main model when not.
+      expect(resolveProvider(cfg, undefined, {}, { light: true }).id).toBe("cat");
+      const withLight = Config.parse({ defaultProvider: "c", providers: { c: { type: "agent-cli", preset: "claude", lightModel: "haiku" } } });
+      expect(resolveProvider(withLight, undefined, {}, { light: true }).id).toBe("c (haiku)");
+      expect(resolveProvider(withLight).id).toBe("c");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

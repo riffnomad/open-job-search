@@ -35,14 +35,6 @@ export const AGENT_CLI_PRESETS: Record<string, AgentCliPreset> = {
     outputFileFlag: "--output-last-message",
     verified: true,
   },
-  gemini: {
-    command: "gemini",
-    // --skip-trust: we run in an empty temp dir. --approval-mode plan: read-only.
-    // Note: Google no longer serves Gemini CLI on the free individual tier; those users should use agy.
-    args: ["--output-format", "text", "--skip-trust", "--approval-mode", "plan", "-p", "Follow the instructions given on stdin."],
-    modelFlag: "--model",
-    verified: false,
-  },
   agy: {
     command: "agy",
     args: ["--print", "{prompt}"],

@@ -34,8 +34,12 @@ export function createProvider(id: string, cfg: ProviderConfig, env: Env = proce
   }
 }
 
-/** Resolve a provider by name, or the configured default. */
-export function resolveProvider(config: Config, name?: string, env: Env = process.env): LLMProvider {
+/**
+ * Resolve a provider by name, or the configured default. With `light`, use
+ * its lightModel when it has one: for light, frequent jobs like judging job
+ * titles, where a small model does as well and costs far less.
+ */
+export function resolveProvider(config: Config, name?: string, env: Env = process.env, opts: { light?: boolean } = {}): LLMProvider {
   const id = name ?? config.defaultProvider;
   if (!id) throw new ProviderError("config", "no provider given and no defaultProvider set. Run `ojs init`.");
   const cfg = config.providers[id];
@@ -43,5 +47,6 @@ export function resolveProvider(config: Config, name?: string, env: Env = proces
     const known = Object.keys(config.providers);
     throw new ProviderError("config", `no provider named "${id}". Configured: ${known.join(", ") || "none"}`);
   }
+  if (opts.light && cfg.lightModel) return createProvider(`${id} (${cfg.lightModel})`, { ...cfg, model: cfg.lightModel } as ProviderConfig, env);
   return createProvider(id, cfg, env);
 }

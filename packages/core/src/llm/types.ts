@@ -17,7 +17,7 @@ export interface ObjectRequest<T> extends GenerateRequest {
  *
  * Everything in core talks to this interface. Adapters exist for model APIs
  * (Anthropic, any OpenAI-compatible server) and for agent CLIs the user is
- * already signed in to (claude, codex, gemini, agy, opencode, custom).
+ * already signed in to (claude, codex, agy, opencode, custom).
  */
 export interface LLMProvider {
   readonly id: string;

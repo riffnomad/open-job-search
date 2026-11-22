@@ -67,6 +67,7 @@ providers add options:
   --model <m>              Model name
   --base-url <url>         For openai-compatible (e.g. https://api.deepseek.com/v1)
   --api-key-env <NAME>     Env var holding the API key (keys are never stored in config)
+  --light-model <m>        A smaller model for light, frequent jobs like judging job titles
   --preset <p>             For agent-cli: ${Object.keys(AGENT_CLI_PRESETS).join(", ")}, or custom
   --command <cmd>          For a custom agent-cli
 
@@ -97,6 +98,7 @@ const { values, positionals } = parseArgs({
     model: { type: "string" },
     "base-url": { type: "string" },
     "api-key-env": { type: "string" },
+    "light-model": { type: "string" },
     preset: { type: "string" },
     command: { type: "string" },
     employer: { type: "string" },
@@ -119,6 +121,8 @@ const { values, positionals } = parseArgs({
     text: { type: "string", multiple: true },
     "dry-run": { type: "boolean", default: false },
     all: { type: "boolean", default: false },
+    judge: { type: "boolean", default: false },
+    by: { type: "string" },
     full: { type: "boolean", default: false },
     paste: { type: "boolean", default: false },
     extracted: { type: "string" },
@@ -143,10 +147,16 @@ async function init(): Promise<void> {
   const config = await loadConfig();
   const detected = detectProviders();
   const added: string[] = [];
+  const lightened: string[] = [];
   for (const d of detected) {
-    if (!config.providers[d.id]) {
+    const have = config.providers[d.id];
+    if (!have) {
       config.providers[d.id] = d.config;
       added.push(d.id);
+    } else if (!have.lightModel && d.config.lightModel && have.type === d.config.type) {
+      // Set up before light models existed: give it one, and say so.
+      have.lightModel = d.config.lightModel;
+      lightened.push(`${d.id} (${d.config.lightModel})`);
     }
   }
   if (!config.defaultProvider && detected[0]) config.defaultProvider = detected[0].id;
@@ -158,11 +168,12 @@ async function init(): Promise<void> {
     detected.length ? "Detected:" : "No agent CLIs or API keys detected.",
     ...detected.map((d) => `  ${d.id.padEnd(16)} ${d.reason}${added.includes(d.id) ? "  (added)" : ""}`),
     "",
+    ...(lightened.length ? [`Light model for judging job titles: ${lightened.join(", ")}`, ""] : []),
     config.defaultProvider ? `Default provider: ${config.defaultProvider}` : "No default provider yet.",
     "",
     "Next: `ojs ask \"Say hello\"` to test it, or `ojs providers add` to add another.",
   ];
-  out(lines.join("\n"), { configPath: configPath(), detected, added, defaultProvider: config.defaultProvider ?? null });
+  out(lines.join("\n"), { configPath: configPath(), detected, added, lightened, defaultProvider: config.defaultProvider ?? null });
 }
 
 async function providers(sub: string | undefined, id: string | undefined): Promise<void> {
@@ -182,6 +193,7 @@ async function providers(sub: string | undefined, id: string | undefined): Promi
       model: values.model,
       baseUrl: values["base-url"],
       apiKeyEnv: values["api-key-env"],
+      lightModel: values["light-model"],
       preset: values.preset ?? (values.command ? "custom" : undefined),
       command: values.command,
     });

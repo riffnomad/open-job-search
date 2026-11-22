@@ -13,6 +13,8 @@ const AnthropicProvider = z.object({
   model: z.string().default("claude-opus-5-5"),
   apiKeyEnv: z.string().optional(),
   effort: z.enum(["low", "medium", "high", "xhigh", "max"]).optional(),
+  /** A smaller, cheaper model for light, frequent jobs (judging job titles). Left out: the main model does them. */
+  lightModel: z.string().optional(),
 });
 
 const OpenAICompatibleProvider = z.object({
@@ -22,17 +24,21 @@ const OpenAICompatibleProvider = z.object({
   apiKeyEnv: z.string().optional(),
   /** Ask for `response_format: {type: "json_object"}` on structured calls. Most servers support it. */
   jsonMode: z.boolean().default(true),
+  /** A smaller, cheaper model for light, frequent jobs (judging job titles). Left out: the main model does them. */
+  lightModel: z.string().optional(),
 });
 
 const AgentCliProvider = z.object({
   type: z.literal("agent-cli"),
-  /** A built-in preset (claude, codex, gemini, agy, opencode) or "custom". */
+  /** A built-in preset (claude, codex, agy, opencode) or "custom". */
   preset: z.string(),
   /** For custom commands, or to override a preset. `{prompt}` in args is replaced with the prompt; otherwise it goes to stdin. */
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
   model: z.string().optional(),
   timeoutMs: z.number().int().positive().default(300_000),
+  /** A smaller, cheaper model for light, frequent jobs (judging job titles). Left out: the main model does them. */
+  lightModel: z.string().optional(),
 });
 
 export const ProviderConfig = z.discriminatedUnion("type", [
