@@ -242,7 +242,8 @@ export async function jobsCommand(rest: string[], f: Flags, out: Out): Promise<v
     case "sources":
     case undefined: {
       const list = Object.values(BOARD_SOURCES).map((s) => ({ id: s.id, name: s.name, board: s.boardHint }));
-      return out(["Hiring systems we can read:", ...list.map((s) => `  ${s.id.padEnd(14)} ${s.board}`), "", "Fetch one: ojs jobs fetch <source> <board>"].join("\n"), { sources: list });
+      const width = Math.max(...list.map((s) => s.id.length)) + 2;
+      return out(["Hiring systems we can read:", ...list.map((s) => `  ${s.id.padEnd(width)}${s.board}`), "", "Fetch one: ojs jobs fetch <source> <board>"].join("\n"), { sources: list });
     }
     default:
       throw new SourceError(`unknown subcommand "jobs ${sub}". Run \`ojs help\`.`);
