@@ -287,7 +287,7 @@ async function searchCommand(args: string[], f: Flags, out: Out): Promise<void> 
   const limit = parseLimit(f);
 
   const missing = (source.keys?.env ?? []).filter((n) => !process.env[n]);
-  if (missing.length) throw new SourceError(`${source.name} needs a free key. Get one at ${source.keys!.signup}, then set ${missing.join(" and ")} in your environment. Keys are never stored in config.`);
+  if (missing.length) throw new SourceError(`${source.name} needs a ${source.keys!.cost ? `key (${source.keys!.cost})` : "free key"}. Get one at ${source.keys!.signup}, then set ${missing.join(" and ")} in your environment. Keys are never stored in config.`);
 
   const country = f.country?.trim().toLowerCase();
   if (country && source.countries && !source.countries.includes(country)) throw new SourceError(`${source.name} doesn't cover "${country}". Countries: ${source.countries.join(", ")}`);
@@ -369,12 +369,12 @@ export async function jobsCommand(rest: string[], f: Flags, out: Out): Promise<v
         covers: s.covers,
         places: s.places,
         ...(s.countries ? { countries: s.countries } : {}),
-        ...(s.keys ? { keys: s.keys.env, keysReady: s.keys.env.every((n) => process.env[n]), signup: s.keys.signup } : {}),
+        ...(s.keys ? { keys: s.keys.env, keysReady: s.keys.env.every((n) => process.env[n]), signup: s.keys.signup, ...(s.keys.cost ? { keyCost: s.keys.cost } : {}) } : {}),
       }));
       const width = Math.max(...[...list, ...boards].map((s) => s.id.length)) + 2;
       const lines = ["Hiring systems we can read, one company at a time:", ...list.map((s) => `  ${s.id.padEnd(width)}${s.board}`), "", "Fetch one: ojs jobs fetch <source> <board>"];
       if (boards.length) {
-        const key = (b: (typeof boards)[number]) => (b.keys ? (b.keysReady ? " (key set)" : ` (needs a free key: ${b.keys.join(", ")})`) : "");
+        const key = (b: (typeof boards)[number]) => (b.keys ? (b.keysReady ? " (key set)" : ` (needs a ${b.keyCost ? `key, ${b.keyCost}` : "free key"}: ${b.keys.join(", ")})`) : "");
         lines.push("", "Job boards we can search, across many companies:", ...boards.map((b) => `  ${b.id.padEnd(width)}${b.covers}${key(b)}`), "", 'Search one: ojs jobs search <job board> "<words>" [--where <place>]');
       }
       return out(lines.join("\n"), { sources: list, jobBoards: boards });

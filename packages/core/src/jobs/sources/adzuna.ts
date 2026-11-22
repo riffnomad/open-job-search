@@ -6,14 +6,15 @@
  *   GET https://api.adzuna.com/v1/api/jobs/{country}/search/{page}
  *       ?app_id=…&app_key=…&what=…&where=…&results_per_page=…
  *
- * It needs a free key, one per person (Adzuna's terms treat several accounts
- * for one person as misuse), read from ADZUNA_APP_ID and ADZUNA_APP_KEY. Their
+ * It needs a key, one per person (Adzuna's terms treat several accounts for
+ * one person as misuse), read from ADZUNA_APP_ID and ADZUNA_APP_KEY. The key
+ * isn't free: a new account gets 25 test calls, then needs a card and a paid
+ * plan (5,000 calls a month, 500 a day, as of November 2026). Each search here
+ * is one call per page, so we read few pages. Their
  * terms allow "personal job search", which is what this is. The key travels in
  * the URL, so the URL never goes into an error message or a log.
  *
- * Adzuna doesn't publish its limits (they're shown in each account, and the
- * free tier is meant for trying the API out), so we read few pages, with a
- * pause between them, and stop when Adzuna says we're asking too often.
+ * We pause between pages, and stop when Adzuna says we're asking too often.
  */
 import { z } from "zod";
 import { decodeEntities, htmlToText } from "../html.ts";
@@ -22,6 +23,8 @@ import { getJson, type SearchOptions, type SearchQuery, type SearchResult, type 
 
 const API = "https://api.adzuna.com/v1/api/jobs";
 const SIGNUP = "https://developer.adzuna.com/signup";
+/** What a key costs, as Adzuna's sign-up page put it in November 2026. */
+const COST = "25 test calls, then a paid plan";
 const ID_ENV = "ADZUNA_APP_ID";
 const KEY_ENV = "ADZUNA_APP_KEY";
 
@@ -120,7 +123,7 @@ async function search(query: SearchQuery, opts: SearchOptions = {}): Promise<Sea
   const appKey = env[KEY_ENV]?.trim();
   if (!appId || !appKey) {
     const missing = [!appId && ID_ENV, !appKey && KEY_ENV].filter(Boolean).join(" and ");
-    throw new SourceError(`Adzuna needs a free key. Get one at ${SIGNUP}, then set ${missing} in your environment.`);
+    throw new SourceError(`Adzuna needs a key (${COST}). Get one at ${SIGNUP}, then set ${missing} in your environment.`);
   }
   const country = (query.country ?? COUNTRIES[0]!).trim().toLowerCase();
   if (!CURRENCY[country]) throw new SourceError(`Adzuna doesn't cover "${country}". Countries: ${COUNTRIES.join(", ")}`);
@@ -181,7 +184,7 @@ export const adzuna: SearchSource = {
   covers: `Jobs from many boards and employers in ${COUNTRIES.length} countries`,
   places: true,
   countries: COUNTRIES,
-  keys: { env: [ID_ENV, KEY_ENV], signup: SIGNUP },
+  keys: { env: [ID_ENV, KEY_ENV], signup: SIGNUP, cost: COST },
   // Their terms: label ads with "Adzuna", linked to adzuna.co.uk or the country's own Adzuna site.
   credit: "Jobs by Adzuna (https://www.adzuna.co.uk)",
   // The terms want every ad labelled "Adzuna", linking to Adzuna; each job's link is its Adzuna page.

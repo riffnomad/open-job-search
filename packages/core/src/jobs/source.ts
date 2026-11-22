@@ -69,8 +69,11 @@ export interface SearchSource {
   places: boolean;
   /** Country codes it can search, when it's split by country; the first is the default. */
   countries?: string[];
-  /** Keys it needs, by environment variable name, and where to get them. Never the values. */
-  keys?: { env: string[]; signup: string };
+  /**
+   * Keys it needs, by environment variable name, and where to get them. Never the values.
+   * `cost` says what the key costs when it isn't free: "25 test calls, then a paid plan".
+   */
+  keys?: { env: string[]; signup: string; cost?: string };
   /** The credit its terms ask for, shown next to its jobs: "Jobs by Adzuna (https://www.adzuna.co.uk)". */
   credit?: string;
   /** A short label the terms want on every ad, not just once under the list: "Adzuna". */

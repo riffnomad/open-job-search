@@ -50,7 +50,7 @@ describe("adzuna", () => {
     expect(adzuna.countries![0]).toBe("gb");
     expect(adzuna.countries).toHaveLength(19);
     expect(adzuna.countries).toContain("us");
-    expect(adzuna.keys).toEqual({ env: ["ADZUNA_APP_ID", "ADZUNA_APP_KEY"], signup: "https://developer.adzuna.com/signup" });
+    expect(adzuna.keys).toEqual({ env: ["ADZUNA_APP_ID", "ADZUNA_APP_KEY"], signup: "https://developer.adzuna.com/signup", cost: "25 test calls, then a paid plan" });
     expect(adzuna.credit).toMatch(/Adzuna/);
     expect(adzuna.places).toBe(true);
   });
