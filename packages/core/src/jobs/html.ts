@@ -36,6 +36,8 @@ export function htmlToText(html: string): string {
     .split("\n")
     .map((l) => l.trim())
     .join("\n")
+    // A list item that opens with a paragraph (<li><p>…) keeps its text on the bullet's line.
+    .replace(/^-\n+/gm, "- ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

@@ -117,6 +117,7 @@ describe("htmlToText", () => {
     expect(htmlToText("<h2>About</h2><p>We&rsquo;re <b>small</b>.<br>Pay: &pound;90k&nbsp;&ndash; &#163;120k</p><script>x()</script><ol><li>One</li><li>Two</li></ol>")).toBe(
       "About\n\nWe’re small.\nPay: £90k – £120k\n\n- One\n- Two",
     );
+    expect(htmlToText("<ul><li><p>One</p></li><li><p>Two</p></li></ul>")).toBe("- One\n\n- Two");
   });
 });
 

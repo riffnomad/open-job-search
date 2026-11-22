@@ -67,7 +67,27 @@ const DEFAULT_LIMIT = 20;
 function payText(p: Pay): string {
   const n = (x: number) => x.toLocaleString("en-GB", { maximumFractionDigits: 0 });
   const range = p.min != null && p.max != null && p.min !== p.max ? `${n(p.min)}–${n(p.max)}` : n((p.min ?? p.max)!);
-  return `${p.currency} ${range}${p.period ? ` a ${p.period}` : ""}`;
+  return `${p.currency} ${range}${p.period ? ` ${p.period === "hour" ? "an" : "a"} ${p.period}` : ""}`;
+}
+
+/**
+ * Every pay range of a job as one line: ranges in the same currency and
+ * period are merged into their overall spread (a job posted for 300 shops
+ * pays 13–22 an hour, not "16 and 32 more").
+ */
+function payLine(pay: Pay[]): string {
+  const groups = new Map<string, Pay[]>();
+  for (const p of pay) {
+    const k = `${p.currency}|${p.period ?? ""}`;
+    groups.set(k, [...(groups.get(k) ?? []), p]);
+  }
+  return [...groups.values()]
+    .map((ps) => {
+      const nums = ps.flatMap((p) => [p.min, p.max]).filter((x): x is number => x != null);
+      const text = payText({ currency: ps[0]!.currency, period: ps[0]!.period, min: Math.min(...nums), max: Math.max(...nums) });
+      return ps.length > 1 ? `${text} (${ps.length} ranges)` : text;
+    })
+    .join("; ");
 }
 
 type SearchTitles = { person: string; search: string; titles: Titles } | { why: string };
@@ -97,18 +117,19 @@ async function searchTitles(): Promise<SearchTitles> {
 
 type Shown = JobGroup & { tag?: Tag; match?: TitleCall };
 
-function groupLines(g: Shown): string[] {
+function groupLines(g: Shown, full = false): string[] {
   const m = g.match;
   const tag = g.tag ? LABEL[g.tag] : "";
   const notes = [m?.level && m.level !== "same" ? LEVEL_TEXT[m.level] : "", m?.verdict === "open" ? `if ${m.if ?? "its condition holds"}` : "", m?.verdict === "excluded" ? `"${m.word}"` : ""].filter(Boolean);
   const extra = notes.length ? `  (${notes.join("; ")})` : "";
   const why = m?.why && m.by !== "rule" && g.tag !== "different" ? m.why : "";
   const places = g.locations.length > 3 ? `${g.locations.slice(0, 3).join("; ")} and ${g.locations.length - 3} more` : g.locations.join("; ");
-  const pay = g.pay.length ? payText(g.pay[0]!) + (g.pay.length > 1 ? ` (+${g.pay.length - 1} more ranges)` : "") : "";
+  const pay = payLine(g.pay);
   const facts = [places || "no location given", pay, g.postedAt ? `posted ${g.postedAt.slice(0, 10)}` : ""].filter(Boolean);
   const ads = g.jobs.length > 1 ? `  (and ${g.jobs.length - 1} more ad${g.jobs.length > 2 ? "s" : ""} for other places)` : "";
   const pad = "".padEnd(12);
-  return [`${tag.padEnd(12)}${g.title}${extra}`, ...(why ? [`${pad}${why}${m?.by === "person" ? " (you said)" : ""}`] : []), `${pad}${facts.join(" · ")}`, `${pad}${g.jobs[0]!.url}${ads}`];
+  const text = full ? (g.jobs[0]!.description ?? "(the ad has no text in this source)").split("\n").map((l) => (l ? `${pad}  ${l}` : "")) : [];
+  return [`${tag.padEnd(12)}${g.title}${extra}`, ...(why ? [`${pad}${why}${m?.by === "person" ? " (you said)" : ""}`] : []), `${pad}${facts.join(" · ")}`, `${pad}${g.jobs[0]!.url}${ads}`, ...(text.length ? ["", ...text] : [])];
 }
 
 async function fetchCommand(args: string[], f: Flags, out: Out): Promise<void> {
@@ -177,7 +198,7 @@ async function fetchCommand(args: string[], f: Flags, out: Out): Promise<void> {
       if (judging.unjudged.length) human.push(`${judging.unjudged.length} title${judging.unjudged.length === 1 ? "" : "s"} not judged yet: add --judge to have your AI judge them (it's remembered after).`);
     }
   } else human.push(`Not matched against any titles: ${(st as { why: string }).why}.`);
-  if (shown.length) human.push("", ...shown.flatMap((g) => [...groupLines(g), ""]));
+  if (shown.length) human.push("", ...shown.flatMap((g) => [...groupLines(g, f.full), ""]));
   else if (has) human.push("", "No jobs like theirs on this board.");
   const hidden = groups.length - shown.length;
   if (hidden > 0) human.push(has && !f.all ? `${hidden} more that are different jobs or ruled out: --all shows them.` : `${hidden} more: --all shows every job, or --limit <n>.`);

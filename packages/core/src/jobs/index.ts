@@ -1,15 +1,16 @@
 import type { BoardSource } from "./source.ts";
 import { SourceError } from "./source.ts";
 import { greenhouse } from "./sources/greenhouse.ts";
+import { lever } from "./sources/lever.ts";
 
 export * from "./job.ts";
 export * from "./html.ts";
 export * from "./source.ts";
 export * from "./judge.ts";
-export { greenhouse };
+export { greenhouse, lever };
 
 /** Every hiring system we can read, by id. */
-export const BOARD_SOURCES: Record<string, BoardSource> = { greenhouse };
+export const BOARD_SOURCES: Record<string, BoardSource> = { greenhouse, lever };
 
 export function boardSource(id: string): BoardSource {
   const s = BOARD_SOURCES[id.toLowerCase()];
