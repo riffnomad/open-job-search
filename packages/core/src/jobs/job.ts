@@ -46,6 +46,8 @@ export interface BoardResult {
   board: string;
   company: string;
   jobs: Job[];
+  /** How many ads the board has, set only when a source stopped before reading them all. */
+  totalAds?: number;
   /** ISO 8601. */
   fetchedAt: string;
 }

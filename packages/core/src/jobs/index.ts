@@ -3,16 +3,17 @@ import { SourceError } from "./source.ts";
 import { ashby } from "./sources/ashby.ts";
 import { greenhouse } from "./sources/greenhouse.ts";
 import { lever } from "./sources/lever.ts";
+import { smartrecruiters } from "./sources/smartrecruiters.ts";
 import { workable } from "./sources/workable.ts";
 
 export * from "./job.ts";
 export * from "./html.ts";
 export * from "./source.ts";
 export * from "./judge.ts";
-export { ashby, greenhouse, lever, workable };
+export { ashby, greenhouse, lever, smartrecruiters, workable };
 
 /** Every hiring system we can read, by id. */
-export const BOARD_SOURCES: Record<string, BoardSource> = { greenhouse, ashby, lever, workable };
+export const BOARD_SOURCES: Record<string, BoardSource> = { greenhouse, ashby, lever, smartrecruiters, workable };
 
 export function boardSource(id: string): BoardSource {
   const s = BOARD_SOURCES[id.toLowerCase()];

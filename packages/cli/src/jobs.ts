@@ -189,6 +189,7 @@ async function fetchCommand(args: string[], f: Flags, out: Out): Promise<void> {
   const human: string[] = [
     `${result.company} on ${source.name}: ${groups.length} job${groups.length === 1 ? "" : "s"}${ads !== groups.length ? ` (${ads} ads: some jobs are posted once per place)` : ""}, ${(ms / 1000).toFixed(1)}s`,
   ];
+  if (result.totalAds) human.push(`Only the newest ${ads.toLocaleString("en-GB")} of ${result.totalAds.toLocaleString("en-GB")} ads were read: ${source.name} lists too many to read them all.`);
   if (has && counts) {
     human.push(`Against ${st.person}'s "${st.search}" titles: ${(Object.keys(ORDER) as Tag[]).filter((k) => counts[k]).map((k) => `${counts[k]} ${LABEL[k]}`).join(" · ")}`);
     if (levels && LEVELS.some((l) => levels[l])) human.push(`Level by title alone (a hint; the ad decides): ${LEVELS.filter((l) => levels[l]).map((l) => `${levels[l]} ${l === "same" ? "same" : l === "unclear" ? "not shown" : l}`).join(" · ")}`);
@@ -210,6 +211,7 @@ async function fetchCommand(args: string[], f: Flags, out: Out): Promise<void> {
     company: result.company,
     fetchedAt: result.fetchedAt,
     total: groups.length,
+    ...(result.totalAds ? { totalAds: result.totalAds } : {}),
     ads,
     titlesFrom: has ? { person: st.person, search: st.search } : null,
     ...(has ? {} : { notMatchedBecause: (st as { why: string }).why }),
