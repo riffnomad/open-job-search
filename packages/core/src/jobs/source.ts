@@ -45,7 +45,30 @@ export function postJson(url: string, body: unknown, what: string, opts: FetchOp
   return requestJson(url, what, opts, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } });
 }
 
-async function requestJson(url: string, what: string, opts: FetchOptions, init: { method?: string; body?: string; headers?: Record<string, string> } = {}): Promise<unknown | null> {
+/** GET text (an XML or RSS feed), the same way as getJson. 404 comes back as null. */
+export async function getText(url: string, what: string, opts: FetchOptions = {}, accept = "application/xml, text/xml, */*"): Promise<string | null> {
+  const res = await request(url, what, opts, { headers: { accept } });
+  return res && (await res.text());
+}
+
+async function requestJson(url: string, what: string, opts: FetchOptions, init: RequestParts = {}): Promise<unknown | null> {
+  const res = await request(url, what, opts, init);
+  if (!res) return null;
+  try {
+    return await res.json();
+  } catch {
+    throw new SourceError(`${what} didn't send valid JSON`);
+  }
+}
+
+interface RequestParts {
+  method?: string;
+  body?: string;
+  headers?: Record<string, string>;
+}
+
+/** One request with our name, a timeout and errors in plain words. 404 comes back as null. */
+async function request(url: string, what: string, opts: FetchOptions, init: RequestParts): Promise<Response | null> {
   const f = opts.fetch ?? fetch;
   let res: Response;
   try {
@@ -63,11 +86,7 @@ async function requestJson(url: string, what: string, opts: FetchOptions, init: 
   if (res.status === 429) throw new SourceError(`${what} says we're asking too often. Try again later.`);
   if (res.status === 403) throw new SourceError(`${what} turned us away (403). We don't try to get round that.`);
   if (!res.ok) throw new SourceError(`${what} answered ${res.status} ${res.statusText}`.trim());
-  try {
-    return await res.json();
-  } catch {
-    throw new SourceError(`${what} didn't send valid JSON`);
-  }
+  return res;
 }
 
 /** A board name as hiring systems use them: letters, digits, - and _. */

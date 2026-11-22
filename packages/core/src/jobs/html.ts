@@ -26,7 +26,7 @@ export function htmlToText(html: string): string {
   const text = src
     .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, "")
     .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<br\b[^>]*>/gi, "\n")
     .replace(/<li\b[^>]*>/gi, "\n- ")
     .replace(/<\/li>/gi, "")
     .replace(/<\/?(p|div|section|ul|ol|h[1-6]|tr|table|blockquote)\b[^>]*>/gi, "\n")

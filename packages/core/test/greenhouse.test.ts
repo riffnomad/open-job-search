@@ -118,6 +118,8 @@ describe("htmlToText", () => {
       "About\n\nWe’re small.\nPay: £90k – £120k\n\n- One\n- Two",
     );
     expect(htmlToText("<ul><li><p>One</p></li><li><p>Two</p></li></ul>")).toBe("- One\n\n- Two");
+    // Pasted from a rich editor: line breaks carry styles.
+    expect(htmlToText('<span>One.</span><br style="margin:0"><br class="x"/>Two')).toBe("One.\n\nTwo");
   });
 });
 

@@ -11,6 +11,7 @@ export * from "./job.ts";
 export * from "./html.ts";
 export * from "./source.ts";
 export * from "./judge.ts";
+export * from "./xml.ts";
 export { ashby, greenhouse, lever, smartrecruiters, workable, workday };
 
 /** Every hiring system we can read, by id. */
