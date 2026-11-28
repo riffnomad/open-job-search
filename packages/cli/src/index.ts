@@ -132,6 +132,7 @@ const { values, positionals } = parseArgs({
     full: { type: "boolean", default: false },
     paste: { type: "boolean", default: false },
     extracted: { type: "string" },
+    file: { type: "string" },
     yes: { type: "boolean", short: "y", default: false },
   },
 });

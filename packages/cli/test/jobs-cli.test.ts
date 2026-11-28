@@ -1,6 +1,6 @@
 // Switching on a job board that's off by default: the --json output is a contract.
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -47,3 +47,23 @@ describe("ojs jobs on / off", () => {
     expect(ojs("jobs", "sources").json.jobBoards.find((b: { id: string }) => b.id === "reed").optIn).toBeUndefined();
   });
 });
+
+describe("ojs jobs from", () => {
+  test("jobs the agent hands over, from a file or --yaml, shown with the source's credit; bad entries listed", async () => {
+    const file = join(home, "handed.yaml");
+    await writeFile(file, '- {title: Data Engineer, company: Acme, url: "https://uk.indeed.com/viewjob?jk=1", location: Leeds}\n- {title: No link, company: Globex}\n');
+    const r = ojs("jobs", "from", "indeed", "--file", file);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ source: "indeed", handedOver: true, total: 1, skipped: [{ entry: 2 }] });
+    expect(r.json.credit).toMatch(/Indeed/);
+    expect(r.json.jobs[0].title).toBe("Data Engineer");
+    expect(ojs("jobs", "from", "indeed", "--yaml", '[{title: A, company: B, url: "https://x.example/a"}]').json.total).toBe(1);
+    expect(ojs("jobs", "sources").json.handedOver).toEqual([expect.objectContaining({ id: "indeed" })]);
+  });
+
+  test("an unknown source or nothing to read says how to use it", () => {
+    expect(ojs("jobs", "from", "monster", "--yaml", "[]").json.error).toMatch(/can't be handed over from "monster"/);
+    expect(ojs("jobs", "from", "indeed").json.error).toMatch(/usage: ojs jobs from/);
+  });
+});
+

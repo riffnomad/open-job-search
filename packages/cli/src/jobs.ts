@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import {
   activePerson,
   activeSearch,
@@ -5,6 +6,9 @@ import {
   boardSource,
   type BoardResult,
   groupJobs,
+  handedSource,
+  HANDED_SOURCES,
+  parseHandedJobs,
   type Job,
   judgeTitles,
   type JobGroup,
@@ -49,6 +53,10 @@ export const JOBS_HELP = `Jobs (fetching job ads from the sources):
                                   Without words, searches for each of the search's core titles.
                                   --where <place> near a place, --country <code> for boards split by
                                   country (gb, us…). Jobs are judged and shown as with fetch.
+  jobs from <source> --yaml "<list>" | --file <path>
+                                  Jobs your AI found itself, from a source ojs can't reach (indeed: through
+                                  Indeed's connector in Claude), judged and shown like any other.
+                                  A YAML or JSON list of {title, company, url, location, pay, postedAt}
   jobs on <job board>             Switch on a job board that's off by default because using it goes against
                                   the site's terms (linkedin). Shows why first; --yes switches it on
   jobs off <job board>            Switch it off again
@@ -69,6 +77,7 @@ interface Flags {
   yaml?: string;
   by?: string;
   yes?: boolean;
+  file?: string;
 }
 
 type Tag = TitleCall["verdict"] | "unjudged";
@@ -354,6 +363,33 @@ async function searchCommand(args: string[], f: Flags, out: Out): Promise<void> 
   );
 }
 
+async function fromCommand(args: string[], f: Flags, out: Out): Promise<void> {
+  const [id] = args;
+  const from = Object.keys(HANDED_SOURCES).join(", ");
+  if (!id || (!f.yaml && !f.file)) throw new SourceError(`usage: ojs jobs from <source> --yaml "<list>" | --file <path>. From: ${from}`);
+  const source = handedSource(id);
+  const started = performance.now();
+  const input = f.yaml ?? (await readFile(f.file!, "utf8").catch(() => { throw new SourceError(`couldn't read ${f.file}`); }));
+  const { jobs, skipped } = parseHandedJobs(input, source.id);
+  const notes = skipped.length ? [`Left out ${skipped.length} of the list: ${skipped.map((s) => `#${s.entry} (${s.why})`).join("; ")}`] : [];
+  return showJobs(
+    {
+      heading: `${source.name}, handed over by your AI`,
+      jobs,
+      ms: Math.round(performance.now() - started),
+      fetchedAt: new Date().toISOString(),
+      notes,
+      empty: "None of these are jobs like theirs.",
+      manyCompanies: true,
+      ...(source.credit ? { credit: source.credit } : {}),
+      data: { source: source.id, handedOver: true, ...(skipped.length ? { skipped } : {}) },
+    },
+    parseLimit(f),
+    f,
+    out,
+  );
+}
+
 async function judgeCommand(f: Flags, out: Out): Promise<void> {
   if (!f.yaml) throw new SourceError('usage: ojs jobs judge --yaml "[{title: …, verdict: …, of: …, why: …}]" [--by person]');
   const by = f.by ?? "ai";
@@ -391,6 +427,8 @@ export async function jobsCommand(rest: string[], f: Flags, out: Out): Promise<v
       return searchCommand(args, f, out);
     case "judge":
       return judgeCommand(f, out);
+    case "from":
+      return fromCommand(args, f, out);
     case "on":
     case "off":
       return switchCommand(sub === "on", args, f, out);
@@ -414,7 +452,9 @@ export async function jobsCommand(rest: string[], f: Flags, out: Out): Promise<v
         const sw = (b: (typeof boards)[number]) => (b.optIn ? (b.on ? " (switched on)" : ` (off: ojs jobs on ${b.id} says why)`) : "");
         lines.push("", "Job boards we can search, across many companies:", ...boards.map((b) => `  ${b.id.padEnd(width)}${b.covers}${key(b)}${sw(b)}`), "", 'Search one: ojs jobs search <job board> "<words>" [--where <place>]');
       }
-      return out(lines.join("\n"), { sources: list, jobBoards: boards });
+      const handed = Object.values(HANDED_SOURCES).map((h) => ({ id: h.id, name: h.name, via: h.via }));
+      if (handed.length) lines.push("", "Through your AI's own connectors (it searches, then hands the jobs over):", ...handed.map((h) => `  ${h.id.padEnd(width)}${h.via}`), "", 'Hand them over: ojs jobs from <source> --file jobs.yaml');
+      return out(lines.join("\n"), { sources: list, jobBoards: boards, handedOver: handed });
     }
     default:
       throw new SourceError(`unknown subcommand "jobs ${sub}". Run \`ojs help\`.`);

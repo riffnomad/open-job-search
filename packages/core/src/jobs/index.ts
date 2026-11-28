@@ -26,6 +26,7 @@ export * from "./source.ts";
 export * from "./judge.ts";
 export * from "./xml.ts";
 export * from "./mcp.ts";
+export * from "./handed.ts";
 export { LEVELSFYI_CREDIT, lookUpPay, splitLevel, type CompanyPay, type LevelPay, type PayAnswer, type PayQuestion } from "./sources/levelsfyi.ts";
 export { adzuna, arbeitnow, ashby, dice, greenhouse, hackernews, lever, levelsfyi, linkedin, personio, recruitee, reed, remoteok, remotive, smartrecruiters, teamtailor, usajobs, workable, workday };
 
