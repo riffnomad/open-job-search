@@ -175,6 +175,8 @@ export interface RequestParts {
   method?: string;
   body?: string;
   headers?: Record<string, string>;
+  /** What a 401 means here, when it isn't a wrong key (a server that wants the person signed in). */
+  unauthorized?: () => Error;
 }
 
 /** One request with our name, a timeout and errors in plain words. 404 comes back as null. For callers that need the reply itself (its headers, or a stream of events). */
@@ -193,6 +195,7 @@ export async function sendRequest(url: string, what: string, opts: FetchOptions,
     throw new SourceError(`couldn't reach ${what}: ${msg}`);
   }
   if (res.status === 404) return null;
+  if (res.status === 401 && init.unauthorized) throw init.unauthorized();
   if (res.status === 401) throw new SourceError(`${what} refused the key (401). Check it's set correctly.`);
   if (res.status === 429) throw new SourceError(`${what} says we're asking too often. Try again later.`);
   if (res.status === 403) throw new SourceError(`${what} turned us away (403). We don't try to get round that.`);

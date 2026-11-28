@@ -25,6 +25,7 @@ import {
 import pkg from "../package.json" with { type: "json" };
 import { FLOW_HELP, flowCommand } from "./flow.ts";
 import { JOBS_HELP, jobsCommand } from "./jobs.ts";
+import { PAY_HELP, payCommand } from "./pay.ts";
 import { PEOPLE_HELP, personCommand, searchCommand, workingOnSummary } from "./people.ts";
 import { PREFS_HELP, prefsCommand } from "./prefs.ts";
 import { PRIVACY_HELP, privacyCommand } from "./privacy.ts";
@@ -46,6 +47,7 @@ Commands:
   flow                     Where you are in the steps, and what's next (see below)
   profile                  Their profile: roles, past lives, details (see below)
   jobs                     Fetch job ads from hiring systems and job boards (see below)
+  pay                      What a role pays, by place or by level at a company (see below)
   doctor                   Check your setup
   help                     Show this help
 
@@ -54,6 +56,7 @@ ${PREFS_HELP}
 ${FLOW_HELP}
 ${PROFILE_HELP}
 ${JOBS_HELP}
+${PAY_HELP}
 ${PRIVACY_HELP}
 Global options:
   --json                   Machine-readable output (for scripts and AI agents)
@@ -117,6 +120,7 @@ const { values, positionals } = parseArgs({
     remove: { type: "boolean", default: false },
     limit: { type: "string" },
     where: { type: "string" },
+    company: { type: "string", multiple: true },
     country: { type: "string" },
     to: { type: "string" },
     source: { type: "string" },
@@ -291,6 +295,8 @@ async function main(): Promise<void> {
       return privacyCommand(rest, values, out);
     case "jobs":
       return jobsCommand(rest, values, out);
+    case "pay":
+      return payCommand(rest, values, out);
     case "doctor":
       return doctor();
     default:

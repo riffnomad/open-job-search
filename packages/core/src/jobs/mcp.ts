@@ -14,6 +14,11 @@ import { type FetchOptions, sendRequest, SourceError } from "./source.ts";
 const PROTOCOL = "2025-06-18";
 const CLIENT = { name: "open-job-search", version: "0.1.0" };
 
+/** The server wants the person signed in for this: it isn't free to everyone. */
+export class SignInNeeded extends SourceError {
+  override name = "SignInNeeded";
+}
+
 export interface McpSession {
   /** A tool's result: its structured content, or its text read as JSON. */
   callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
@@ -69,6 +74,7 @@ export async function connectMcp(url: string, what: string, opts: FetchOptions =
         "mcp-protocol-version": PROTOCOL,
         ...(session ? { "mcp-session-id": session } : {}),
       },
+      unauthorized: () => new SignInNeeded(`${what} wants you signed in for that (401); without signing in, it isn't free.`),
     });
     if (!res) throw new SourceError(`${what} isn't there (404). Its MCP server may have moved.`);
     return res;
