@@ -93,7 +93,7 @@ bun run ojs providers add anthropic --type anthropic --model claude-opus-5-5 --a
 
 1. **Foundation**: provider layer, config, tools, web and worker skeletons ✅
 2. **Profile**: CV import ✅, then interviews that deepen each role, past lives, people and searches ✅, LinkedIn export
-3. **Discovery**: company job boards (Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Personio, Recruitee, Teamtailor, and Workday unofficially), job boards searched across many companies (Reed in the UK and USAJOBS for US federal jobs, with your own free key; Adzuna in 19 countries, with your own key: 25 free test calls, then a paid plan; Arbeitnow for Europe; Remotive and Remote OK for remote jobs; Hacker News "Who is hiring?"; LinkedIn, unofficially and only once you switch it on, since its terms forbid automated access); dedup and liveness checks
+3. **Discovery**: company job boards (Greenhouse, Lever, Ashby, Workable, SmartRecruiters, Personio, Recruitee, Teamtailor, and Workday unofficially), job boards searched across many companies (Reed in the UK and USAJOBS for US federal jobs, with your own free key; Adzuna in 19 countries, with your own key: 25 free test calls, then a paid plan; Arbeitnow for Europe; Dice for US tech jobs, through its own MCP server; Remotive and Remote OK for remote jobs; Hacker News "Who is hiring?"; LinkedIn, unofficially and only once you switch it on, since its terms forbid automated access); dedup and liveness checks
 4. **Evaluation**: structured fit scoring with reasons and hard blockers (visa sponsorship, location, level)
 5. **Warm paths**: match roles to your network and draft referral asks
 6. **Applications**: tailored CV, cover letter and form answers, with fact checks so nothing is invented

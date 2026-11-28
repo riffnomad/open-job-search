@@ -3,6 +3,7 @@ import { SourceError } from "./source.ts";
 import { adzuna } from "./sources/adzuna.ts";
 import { arbeitnow } from "./sources/arbeitnow.ts";
 import { ashby } from "./sources/ashby.ts";
+import { dice } from "./sources/dice.ts";
 import { greenhouse } from "./sources/greenhouse.ts";
 import { hackernews } from "./sources/hackernews.ts";
 import { lever } from "./sources/lever.ts";
@@ -23,7 +24,8 @@ export * from "./html.ts";
 export * from "./source.ts";
 export * from "./judge.ts";
 export * from "./xml.ts";
-export { adzuna, arbeitnow, ashby, greenhouse, hackernews, lever, linkedin, personio, recruitee, reed, remoteok, remotive, smartrecruiters, teamtailor, usajobs, workable, workday };
+export * from "./mcp.ts";
+export { adzuna, arbeitnow, ashby, dice, greenhouse, hackernews, lever, linkedin, personio, recruitee, reed, remoteok, remotive, smartrecruiters, teamtailor, usajobs, workable, workday };
 
 /** Every hiring system we can read, by id. */
 export const BOARD_SOURCES: Record<string, BoardSource> = { greenhouse, ashby, lever, smartrecruiters, workable, personio, recruitee, teamtailor, workday };
@@ -32,7 +34,7 @@ export const BOARD_SOURCES: Record<string, BoardSource> = { greenhouse, ashby, l
  * Every job board we can search, by id. Searched by words and place across
  * many companies, unlike hiring systems, which are read one company at a time.
  */
-export const SEARCH_SOURCES: Record<string, SearchSource> = { adzuna, remotive, remoteok, arbeitnow, reed, usajobs, hackernews, linkedin };
+export const SEARCH_SOURCES: Record<string, SearchSource> = { adzuna, remotive, remoteok, arbeitnow, reed, usajobs, dice, hackernews, linkedin };
 
 export function searchSource(id: string): SearchSource {
   const s = SEARCH_SOURCES[id.toLowerCase()];

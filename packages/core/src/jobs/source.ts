@@ -157,12 +157,12 @@ export function postJson(url: string, body: unknown, what: string, opts: FetchOp
 
 /** GET text (an XML or RSS feed), the same way as getJson. 404 comes back as null. */
 export async function getText(url: string, what: string, opts: FetchOptions = {}, accept = "application/xml, text/xml, */*"): Promise<string | null> {
-  const res = await request(url, what, opts, { headers: { accept } });
+  const res = await sendRequest(url, what, opts, { headers: { accept } });
   return res && (await res.text());
 }
 
 async function requestJson(url: string, what: string, opts: FetchOptions, init: RequestParts = {}): Promise<unknown | null> {
-  const res = await request(url, what, opts, init);
+  const res = await sendRequest(url, what, opts, init);
   if (!res) return null;
   try {
     return await res.json();
@@ -171,14 +171,14 @@ async function requestJson(url: string, what: string, opts: FetchOptions, init: 
   }
 }
 
-interface RequestParts {
+export interface RequestParts {
   method?: string;
   body?: string;
   headers?: Record<string, string>;
 }
 
-/** One request with our name, a timeout and errors in plain words. 404 comes back as null. */
-async function request(url: string, what: string, opts: FetchOptions, init: RequestParts): Promise<Response | null> {
+/** One request with our name, a timeout and errors in plain words. 404 comes back as null. For callers that need the reply itself (its headers, or a stream of events). */
+export async function sendRequest(url: string, what: string, opts: FetchOptions, init: RequestParts): Promise<Response | null> {
   const f = opts.fetch ?? fetch;
   let res: Response;
   try {
