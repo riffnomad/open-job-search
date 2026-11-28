@@ -53,6 +53,8 @@ Job boards and aggregators, searched across many companies by words and place, i
 
 Rules for sources: no module for a single company's careers site; only documented or public endpoints a site's terms allow; use `getJson` (it sends our User-Agent, times out, and words errors plainly).
 
+One exception, decided by the maintainer: LinkedIn (`linkedin.ts`), whose terms forbid automated access. It's off until each person switches it on (`optIn`, `ojs jobs on linkedin`), reads only the search results shown to visitors who aren't signed in, sends our own User-Agent, pauses between pages, and stops at the first refusal. It isn't a precedent: don't add another source like it without asking first.
+
 ## Adding an agent CLI preset
 
 Add it to `AGENT_CLI_PRESETS` in `packages/core/src/llm/providers/agent-cli.ts`. Set `verified: true` only after running `bun run ojs ask "Reply with exactly: OK" --provider <id>` against the real CLI.

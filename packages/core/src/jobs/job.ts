@@ -38,6 +38,12 @@ export interface Job {
   pay: Pay[];
   /** The full ad as plain text. */
   description?: string;
+  /** The company's own page at this source, where the ad links one ("https://www.linkedin.com/company/acme"). The same for all its ads. */
+  companyPage?: string;
+  /** A link to the company's logo, as the source gives it. */
+  companyLogo?: string;
+  /** Short notes the source shows on the ad, in its words: "Be an early applicant". */
+  signals?: string[];
 }
 
 /** What one fetch of one company's board brought back. */

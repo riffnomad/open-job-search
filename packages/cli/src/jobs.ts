@@ -9,7 +9,9 @@ import {
   judgeTitles,
   type JobGroup,
   knownCalls,
+  isSwitchedOn,
   loadConfig,
+  saveConfig,
   type Pay,
   resolveProvider,
   parseSavedCalls,
@@ -47,6 +49,9 @@ export const JOBS_HELP = `Jobs (fetching job ads from the sources):
                                   Without words, searches for each of the search's core titles.
                                   --where <place> near a place, --country <code> for boards split by
                                   country (gb, us…). Jobs are judged and shown as with fetch.
+  jobs on <job board>             Switch on a job board that's off by default because using it goes against
+                                  the site's terms (linkedin). Shows why first; --yes switches it on
+  jobs off <job board>            Switch it off again
   jobs judge --yaml "<list>"      Save verdicts: [{title: "<ad title>", verdict: core|related|open|different,
                                   level: same|below|above|unclear, of: "<their title>", why: "…"}]
                                   --by person for corrections the person made (kept when titles change)
@@ -63,6 +68,7 @@ interface Flags {
   provider?: string;
   yaml?: string;
   by?: string;
+  yes?: boolean;
 }
 
 type Tag = TitleCall["verdict"] | "unjudged";
@@ -136,7 +142,7 @@ function groupLines(g: Shown, full = false, company = false, label = ""): string
   const why = m?.why && m.by !== "rule" && g.tag !== "different" ? m.why : "";
   const places = g.locations.length > 3 ? `${g.locations.slice(0, 3).join("; ")} and ${g.locations.length - 3} more` : g.locations.join("; ");
   const pay = payLine(g.pay);
-  const facts = [company ? g.company : "", places || "no location given", pay, g.postedAt ? `posted ${g.postedAt.slice(0, 10)}` : "", label ? `via ${label}` : ""].filter(Boolean);
+  const facts = [company ? g.company : "", places || "no location given", pay, g.postedAt ? `posted ${g.postedAt.slice(0, 10)}` : "", ...(g.jobs[0]!.signals ?? []), label ? `via ${label}` : ""].filter(Boolean);
   const ads = g.jobs.length > 1 ? `  (and ${g.jobs.length - 1} more ad${g.jobs.length > 2 ? "s" : ""} for other places)` : "";
   const pad = "".padEnd(12);
   const text = full ? (g.jobs[0]!.description ?? "(the ad has no text in this source)").split("\n").map((l) => (l ? `${pad}  ${l}` : "")) : [];
@@ -284,6 +290,8 @@ async function searchCommand(args: string[], f: Flags, out: Out): Promise<void> 
   const boards = Object.keys(SEARCH_SOURCES).join(", ") || "none yet";
   if (!id) throw new SourceError(`usage: ojs jobs search <job board> [words] [--where <place>] [--country <code>]. Job boards: ${boards}`);
   const source = searchSource(id);
+  if (!isSwitchedOn(source, (await loadConfig()).jobBoardsOn))
+    throw new SourceError(`${source.name} is off until you switch it on. ${source.optIn} To switch it on: ojs jobs on ${source.id} --yes`);
   const limit = parseLimit(f);
 
   // Each board explains its own missing keys (USAJOBS also wants the email the key was asked for with).
@@ -356,6 +364,24 @@ async function judgeCommand(f: Flags, out: Out): Promise<void> {
   out(`Saved ${n} verdict${n === 1 ? "" : "s"} for ${st.person}'s "${st.search}" search${by === "person" ? " (yours: kept even when the titles change)" : ""}.`, { saved: n, by, search: st.search });
 }
 
+async function switchCommand(on: boolean, args: string[], f: Flags, out: Out): Promise<void> {
+  const [id] = args;
+  const optional = Object.values(SEARCH_SOURCES).filter((s) => s.optIn).map((s) => s.id);
+  if (!id) throw new SourceError(`usage: ojs jobs ${on ? "on" : "off"} <job board>. Job boards that are off by default: ${optional.join(", ") || "none"}`);
+  const source = searchSource(id);
+  if (!source.optIn) throw new SourceError(`${source.name} is always on: nothing to switch.`);
+  const config = await loadConfig();
+  const was = config.jobBoardsOn.includes(source.id);
+  if (on && !was && !f.yes) {
+    return out(`${source.name} is off. Before you switch it on:\n\n${source.optIn}\n\nTo switch it on: ojs jobs on ${source.id} --yes`, { board: source.id, on: false, why: source.optIn, confirmWith: `ojs jobs on ${source.id} --yes` });
+  }
+  if (on !== was) {
+    config.jobBoardsOn = on ? [...config.jobBoardsOn, source.id] : config.jobBoardsOn.filter((b) => b !== source.id);
+    await saveConfig(config);
+  }
+  out(`${source.name} is ${on ? "on" : "off"}${on === was ? " already" : ""}.`, { board: source.id, on });
+}
+
 export async function jobsCommand(rest: string[], f: Flags, out: Out): Promise<void> {
   const [sub, ...args] = rest;
   switch (sub) {
@@ -365,22 +391,28 @@ export async function jobsCommand(rest: string[], f: Flags, out: Out): Promise<v
       return searchCommand(args, f, out);
     case "judge":
       return judgeCommand(f, out);
+    case "on":
+    case "off":
+      return switchCommand(sub === "on", args, f, out);
     case "sources":
     case undefined: {
       const list = Object.values(BOARD_SOURCES).map((s) => ({ id: s.id, name: s.name, board: s.boardHint }));
+      const on = (await loadConfig()).jobBoardsOn;
       const boards = Object.values(SEARCH_SOURCES).map((s) => ({
         id: s.id,
         name: s.name,
         covers: s.covers,
         places: s.places,
         ...(s.countries ? { countries: s.countries } : {}),
+        ...(s.optIn ? { optIn: true, on: isSwitchedOn(s, on) } : {}),
         ...(s.keys ? { keys: s.keys.env, keysReady: s.keys.env.every((n) => process.env[n]), signup: s.keys.signup, ...(s.keys.cost ? { keyCost: s.keys.cost } : {}) } : {}),
       }));
       const width = Math.max(...[...list, ...boards].map((s) => s.id.length)) + 2;
       const lines = ["Hiring systems we can read, one company at a time:", ...list.map((s) => `  ${s.id.padEnd(width)}${s.board}`), "", "Fetch one: ojs jobs fetch <source> <board>"];
       if (boards.length) {
         const key = (b: (typeof boards)[number]) => (b.keys ? (b.keysReady ? " (key set)" : ` (needs a ${b.keyCost ? `key, ${b.keyCost}` : "free key"}: ${b.keys.join(", ")})`) : "");
-        lines.push("", "Job boards we can search, across many companies:", ...boards.map((b) => `  ${b.id.padEnd(width)}${b.covers}${key(b)}`), "", 'Search one: ojs jobs search <job board> "<words>" [--where <place>]');
+        const sw = (b: (typeof boards)[number]) => (b.optIn ? (b.on ? " (switched on)" : ` (off: ojs jobs on ${b.id} says why)`) : "");
+        lines.push("", "Job boards we can search, across many companies:", ...boards.map((b) => `  ${b.id.padEnd(width)}${b.covers}${key(b)}${sw(b)}`), "", 'Search one: ojs jobs search <job board> "<words>" [--where <place>]');
       }
       return out(lines.join("\n"), { sources: list, jobBoards: boards });
     }

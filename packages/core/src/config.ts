@@ -52,6 +52,8 @@ export const Config = z.object({
   version: z.literal(1).default(1),
   defaultProvider: z.string().optional(),
   providers: z.record(z.string(), ProviderConfig).default({}),
+  /** Job boards switched on that are off by default, because using them goes against the site's terms (LinkedIn). */
+  jobBoardsOn: z.array(z.string()).default([]),
 });
 export type Config = z.infer<typeof Config>;
 

@@ -78,6 +78,11 @@ export interface SearchSource {
   credit?: string;
   /** A short label the terms want on every ad, not just once under the list: "Adzuna". */
   creditEach?: string;
+  /**
+   * Set for a source that's off until the person switches it on, because using
+   * it goes against the site's terms: why, in plain words, shown before they do.
+   */
+  optIn?: string;
   search(query: SearchQuery, opts?: SearchOptions): Promise<SearchResult>;
 }
 
